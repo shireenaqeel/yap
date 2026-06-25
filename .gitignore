@@ -1,0 +1,28 @@
+# Personal application brief / video script — not product code
+yap_project_and_video_plan*.md
+
+# Per-user journaling data — never commit anyone's entries or vectors
+data/
+
+# Environment / secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Model / HF cache (can be large)
+.cache/
+*.bin
+!*.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
