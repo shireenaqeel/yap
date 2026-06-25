@@ -1,110 +1,91 @@
-"""Per-user storage. The hard rule from the brief: one user_id, one folder,
-nothing ever reads or writes across folders.
-
-Each user owns exactly two files, kept in lockstep:
-    data/users/{user_id}/faiss_index.bin   -> vectors only
-    data/users/{user_id}/chunks.jsonl      -> id -> original text + metadata
+"""Per-user storage backed by Postgres + pgvector. Every query is scoped by
+user_id, so one account can never read another's entries.
 """
 
 from __future__ import annotations
 
-import json
-import re
-from pathlib import Path
-
-import faiss
 import numpy as np
 
 from . import config
-
-
-def _safe_user_id(user_id: str) -> str:
-    """Reduce an arbitrary typed name to a single safe path segment.
-
-    This is the guard that makes cross-folder access impossible: no slashes,
-    no '..', no drive letters can survive, so a user_id can only ever resolve
-    to one direct child of DATA_DIR.
-    """
-    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", user_id.strip()).strip("_")
-    if not cleaned:
-        raise ValueError("user_id must contain at least one usable character")
-    return cleaned.lower()
+from .db import get_conn
 
 
 class UserStore:
-    """Owns one user's FAISS index + chunk store. Never touches anyone else."""
+    """Owns one user's rows in the shared `entries` table."""
 
-    def __init__(self, user_id: str):
-        self.user_id = _safe_user_id(user_id)
-        self.dir = (config.DATA_DIR / self.user_id).resolve()
-
-        # Defence in depth: the resolved path must stay inside DATA_DIR.
-        root = config.DATA_DIR.resolve()
-        if root not in self.dir.parents and self.dir != root:
-            raise ValueError("resolved user path escaped the data root")
-
-        self.dir.mkdir(parents=True, exist_ok=True)
-        self.index_path = self.dir / "faiss_index.bin"
-        self.chunks_path = self.dir / "chunks.jsonl"
-
-        self._index = self._load_index()
-
-    # ---- index lifecycle -------------------------------------------------
-    def _load_index(self) -> faiss.Index:
-        if self.index_path.exists():
-            return faiss.read_index(str(self.index_path))
-        return faiss.IndexFlatIP(config.EMBED_DIM)
-
-    def _save_index(self) -> None:
-        faiss.write_index(self._index, str(self.index_path))
+    def __init__(self, user_id: int):
+        self.user_id = int(user_id)
 
     @property
     def size(self) -> int:
-        return self._index.ntotal
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "select count(*) from entries where user_id = %s", (self.user_id,)
+            )
+            return cur.fetchone()[0]
 
     # ---- writes ----------------------------------------------------------
     def add(self, chunks: list[str], vectors: np.ndarray, metadata: dict) -> int:
-        """Append chunks (text) and their vectors atomically-ish.
-
-        `metadata` is shared by every chunk in this call (e.g. one yap entry
-        or one PDF). Returns the number of chunks added.
-        """
+        """Insert chunks + vectors for this user. `metadata` carries
+        type / category / source shared by every chunk in the call."""
         if not chunks:
             return 0
         if vectors.shape[0] != len(chunks):
             raise ValueError("vectors and chunks length mismatch")
 
-        start_id = self._index.ntotal
-        self._index.add(vectors)
-
-        with self.chunks_path.open("a", encoding="utf-8") as f:
-            for offset, text in enumerate(chunks):
-                record = {"id": start_id + offset, "text": text, **metadata}
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-        self._save_index()
+        rows = [
+            (
+                self.user_id,
+                text,
+                vectors[i],
+                metadata.get("type", "yap_entry"),
+                metadata.get("category"),
+                metadata.get("source"),
+            )
+            for i, text in enumerate(chunks)
+        ]
+        with get_conn().cursor() as cur:
+            cur.executemany(
+                "insert into entries "
+                "(user_id, text, embedding, type, category, source) "
+                "values (%s, %s, %s, %s, %s, %s)",
+                rows,
+            )
         return len(chunks)
 
     # ---- reads -----------------------------------------------------------
     def all_chunks(self) -> list[dict]:
-        if not self.chunks_path.exists():
-            return []
-        with self.chunks_path.open(encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "select text, type, category, source, created_at "
+                "from entries where user_id = %s order by created_at",
+                (self.user_id,),
+            )
+            return [self._row(r) for r in cur.fetchall()]
 
     def search(self, query_vec: np.ndarray, k: int = config.TOP_K) -> list[dict]:
-        """Return the top-k chunk records for a single query vector."""
-        if self._index.ntotal == 0:
-            return []
-        k = min(k, self._index.ntotal)
-        scores, ids = self._index.search(query_vec.reshape(1, -1), k)
+        """Top-k most similar chunks for this user (cosine via pgvector)."""
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "select text, type, category, source, created_at, "
+                "1 - (embedding <=> %s) as score "
+                "from entries where user_id = %s "
+                "order by embedding <=> %s limit %s",
+                (query_vec, self.user_id, query_vec, k),
+            )
+            out = []
+            for r in cur.fetchall():
+                d = self._row(r)
+                d["score"] = float(r[5])
+                out.append(d)
+            return out
 
-        by_id = {c["id"]: c for c in self.all_chunks()}
-        results = []
-        for score, idx in zip(scores[0], ids[0]):
-            if idx < 0:
-                continue
-            chunk = by_id.get(int(idx))
-            if chunk:
-                results.append({**chunk, "score": float(score)})
-        return results
+    @staticmethod
+    def _row(r) -> dict:
+        return {
+            "text": r[0],
+            "type": r[1],
+            "category": r[2],
+            "source": r[3],
+            "date": r[4].isoformat() if r[4] else "",
+        }

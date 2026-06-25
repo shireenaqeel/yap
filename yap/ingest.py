@@ -1,12 +1,10 @@
 """Ingest pipeline: extract -> chunk -> embed -> store.
 
 Both input paths (typed yap entries and uploaded PDFs) flow through the exact
-same chunk/embed/store steps. They differ only in the metadata tag they carry.
+same chunk/embed/store steps. They differ only in the metadata they carry.
 """
 
 from __future__ import annotations
-
-from datetime import datetime, timezone
 
 from . import config
 from .embeddings import embed
@@ -27,7 +25,6 @@ def chunk_text(text: str) -> list[str]:
     while start < len(text):
         end = start + config.CHUNK_SIZE
         window = text[start:end]
-        # Prefer to break at the last sentence boundary inside the window.
         if end < len(text):
             for sep in (". ", "\n", "! ", "? "):
                 cut = window.rfind(sep)
@@ -39,17 +36,13 @@ def chunk_text(text: str) -> list[str]:
     return [c for c in chunks if c]
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def ingest_text(store: UserStore, text: str) -> int:
-    """Ingest a typed journal entry. Returns chunks added."""
+def ingest_text(store: UserStore, text: str, category: str | None = None) -> int:
+    """Ingest a typed journal entry with an optional category tag."""
     chunks = chunk_text(text)
     if not chunks:
         return 0
     vectors = embed(chunks)
-    metadata = {"type": "yap_entry", "source": "typed", "date": _now_iso()}
+    metadata = {"type": "yap_entry", "source": "typed", "category": category}
     return store.add(chunks, vectors, metadata)
 
 
@@ -71,5 +64,5 @@ def ingest_pdf(store: UserStore, file_bytes: bytes, filename: str) -> int:
     if not chunks:
         return 0
     vectors = embed(chunks)
-    metadata = {"type": "document", "source": filename, "date": _now_iso()}
+    metadata = {"type": "document", "source": filename, "category": None}
     return store.add(chunks, vectors, metadata)

@@ -1,64 +1,101 @@
 """Yap — a personal journaling tool with RAG-based self-reflection.
 
-Run with:  streamlit run app.py
+Cloud edition: real accounts (login/signup), per-user data in Postgres+pgvector,
+categories, and an AI "Personality Wrapped". Run with: streamlit run app.py
 """
 
-import plotly.express as px
+import os
+
 import streamlit as st
 
-from yap import config, generation, ingest, patterns
-from yap.storage import UserStore
+# Merge Streamlit secrets into the environment BEFORE importing yap config, so
+# the same code works locally (.env) and when deployed (st.secrets).
+try:
+    for _k, _v in st.secrets.items():
+        os.environ.setdefault(_k, str(_v))
+except Exception:
+    pass
+
+import plotly.express as px  # noqa: E402
+
+from yap import auth, config, db, generation, ingest, patterns, wrapped  # noqa: E402
+from yap.storage import UserStore  # noqa: E402
 
 st.set_page_config(page_title="Yap", page_icon="💬", layout="centered")
 
 
-def get_store() -> UserStore | None:
-    """Resolve the active user's store, or None if no user set yet."""
-    user_id = st.session_state.get("user_id")
-    if not user_id:
-        return None
-    return UserStore(user_id)
+@st.cache_resource
+def _bootstrap():
+    """Create tables once per process."""
+    db.init_schema()
+    return True
 
 
-# ---- sidebar: pick who you are (MVP "auth" = a typed name) ----------------
-with st.sidebar:
+_bootstrap()
+
+
+# ---- auth screen ----------------------------------------------------------
+def auth_screen():
     st.title("💬 Yap")
-    st.caption("Yap your thoughts. Ask yourself anything.")
-    name = st.text_input("Your name (your private space)", key="user_name_input")
-    if st.button("Enter", use_container_width=True) and name.strip():
-        st.session_state["user_id"] = name.strip()
-    if st.session_state.get("user_id"):
-        store = UserStore(st.session_state["user_id"])
-        st.success(f"Signed in as **{store.user_id}**")
-        st.metric("Chunks stored", store.size)
-    if not config.GROQ_API_KEY:
-        st.warning("No GROQ_API_KEY set — answering is disabled. See .env.example.")
+    st.caption("Yap your thoughts. Ask yourself anything. Wrap your mind.")
+    tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
+
+    with tab_login:
+        u = st.text_input("Username", key="login_u")
+        p = st.text_input("Password", type="password", key="login_p")
+        if st.button("Log in", type="primary", use_container_width=True):
+            try:
+                uid = auth.log_in(u, p)
+                st.session_state.update(user_id=uid, username=u.strip().lower())
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+
+    with tab_signup:
+        u2 = st.text_input("Choose a username", key="su_u")
+        p2 = st.text_input("Choose a password", type="password", key="su_p")
+        if st.button("Create account", use_container_width=True):
+            try:
+                uid = auth.sign_up(u2, p2)
+                st.session_state.update(user_id=uid, username=u2.strip().lower())
+                st.success("Account created!")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
 
-store = get_store()
-
-if store is None:
-    st.title("Welcome to Yap")
-    st.write(
-        "Yap is a private journal that learns *your* patterns. Type or upload "
-        "entries, then ask yourself questions and get answers grounded only in "
-        "your own words."
-    )
-    st.info("👈 Enter a name in the sidebar to open your private space.")
+if "user_id" not in st.session_state:
+    auth_screen()
     st.stop()
 
+store = UserStore(st.session_state["user_id"])
 
-tab_yap, tab_ask, tab_patterns = st.tabs(["📝 Yap", "🪞 Ask Yourself", "📊 Patterns"])
+# ---- sidebar --------------------------------------------------------------
+with st.sidebar:
+    st.title("💬 Yap")
+    st.success(f"Signed in as **{st.session_state['username']}**")
+    st.metric("Chunks stored", store.size)
+    if st.button("Log out", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+    if not config.GROQ_API_KEY:
+        st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
 
-# ---- Yap tab: ingest typed entries and PDFs ------------------------------
+
+tab_yap, tab_ask, tab_wrapped, tab_patterns = st.tabs(
+    ["📝 Yap", "🪞 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
+)
+
+# ---- Yap tab --------------------------------------------------------------
 with tab_yap:
     st.subheader("Yap an entry")
+    category = st.selectbox("Tag this yap", config.CATEGORIES, index=2)
     entry = st.text_area("What's on your mind?", height=180, key="entry_box")
     if st.button("Save entry", type="primary"):
         if entry.strip():
             with st.spinner("Embedding & storing…"):
-                added = ingest.ingest_text(store, entry)
-            st.success(f"Saved — {added} chunk(s) added to your space.")
+                added = ingest.ingest_text(store, entry, category=category)
+            st.success(f"Saved as {category} — {added} chunk(s) added.")
         else:
             st.warning("Write something first.")
 
@@ -70,7 +107,7 @@ with tab_yap:
             added = ingest.ingest_pdf(store, pdf.getvalue(), pdf.name)
         st.success(f"Ingested {pdf.name} — {added} chunk(s) added.")
 
-# ---- Ask Yourself tab: retrieve + generate -------------------------------
+# ---- Ask Yourself tab -----------------------------------------------------
 with tab_ask:
     st.subheader("Ask yourself")
     st.caption(
@@ -88,12 +125,31 @@ with tab_ask:
             if result["sources"]:
                 with st.expander(f"Grounded in {len(result['sources'])} of your entries"):
                     for s in result["sources"]:
-                        meta = f"{s.get('type','entry')} · {s.get('date','')[:10]} · score {s['score']:.2f}"
+                        cat = f" · {s['category']}" if s.get("category") else ""
+                        meta = f"{s.get('type','entry')}{cat} · {s.get('date','')[:10]} · score {s['score']:.2f}"
                         st.markdown(f"**{meta}**")
                         st.write(s["text"])
                         st.divider()
 
-# ---- Patterns tab: lightweight recap -------------------------------------
+# ---- Wrapped tab ----------------------------------------------------------
+with tab_wrapped:
+    st.subheader("🎁 Your Personality Wrapped")
+    span = st.radio("Wrap my…", ["This week", "This month"], horizontal=True)
+    days = 7 if span == "This week" else 30
+    if st.button("Generate my Wrapped", type="primary"):
+        with st.spinner("Reading your mind…"):
+            w = wrapped.generate(store, days=days)
+        st.session_state["last_wrapped"] = w
+    if "last_wrapped" in st.session_state:
+        w = st.session_state["last_wrapped"]
+        s = w["stats"]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Entries", s["entries"])
+        c2.metric("Top category", (s["top_category"] or "—"))
+        c3.metric("Period", s["period"].title())
+        st.markdown(w["recap"])
+
+# ---- Patterns tab ---------------------------------------------------------
 with tab_patterns:
     st.subheader("Your patterns")
     days = st.slider("Look back over the last N days", 7, 365, 30, step=7)
@@ -104,6 +160,13 @@ with tab_patterns:
     c2.metric("Yap entries", data["yap_chunks"])
     c3.metric("Doc chunks", data["doc_chunks"])
 
+    if data["categories"]:
+        cats, ccounts = zip(*data["categories"])
+        st.plotly_chart(
+            px.pie(names=list(cats), values=list(ccounts), title="Your categories"),
+            use_container_width=True,
+        )
+
     if data["keywords"]:
         words, counts = zip(*data["keywords"])
         fig = px.bar(
@@ -113,7 +176,7 @@ with tab_patterns:
         )
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
         st.plotly_chart(fig, use_container_width=True)
-    else:
+    elif not data["categories"]:
         st.info("Not enough written yet to find patterns. Yap a few entries!")
 
     if data["activity"]:

@@ -1,14 +1,15 @@
-"""Central configuration. Reads from environment (.env supported)."""
+"""Central configuration. Reads from environment (.env locally, st.secrets in
+the cloud). Streamlit secrets are merged into os.environ by db.py at startup.
+"""
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Where every user's isolated folder lives: data/users/{user_id}/
-DATA_DIR = Path(os.getenv("YAP_DATA_DIR", "data")) / "users"
+# Cloud Postgres (Supabase) connection string. Required for the app to run.
+DB_URL = os.getenv("SUPABASE_DB_URL", "")
 
 # Models
 EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
@@ -21,3 +22,13 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 CHUNK_SIZE = 600      # characters per chunk
 CHUNK_OVERLAP = 100   # character overlap between consecutive chunks
 TOP_K = 5             # chunks retrieved per question
+
+# The fixed set of categories a user can tag a yap with.
+CATEGORIES = [
+    "💡 Idea",
+    "😤 Emotional rant",
+    "🎲 Random",
+    "🎯 Goal",
+    "🙏 Gratitude",
+    "🪞 Reflection",
+]

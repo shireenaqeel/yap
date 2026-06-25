@@ -10,6 +10,15 @@ from datetime import datetime, timedelta, timezone
 
 from .storage import UserStore
 
+
+def category_counts(chunks: list[dict]) -> list[tuple[str, int]]:
+    counter: Counter[str] = Counter()
+    for c in chunks:
+        cat = c.get("category")
+        if cat:
+            counter[cat] += 1
+    return counter.most_common()
+
 # Common words we don't want surfacing as "topics".
 STOPWORDS = set(
     """a an and the of to in is it i im i'm me my we you your he she they them
@@ -73,5 +82,6 @@ def summary(store: UserStore, days: int = 30) -> dict:
         "doc_chunks": docs,
         "keywords": top_keywords(chunks),
         "activity": activity_by_day(chunks),
+        "categories": category_counts(chunks),
         "days": days,
     }

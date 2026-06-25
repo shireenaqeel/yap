@@ -9,14 +9,19 @@ Built for the **Girls Who Yap Fellowship 2.0** application.
 
 ## What it does
 
-- **📝 Yap** — write a journal entry (or upload a PDF like a resume or a
-  "how I think" profile). Everything runs through one pipeline:
+- **🔐 Accounts** — sign up / log in. Your data lives in the cloud, so it
+  follows you across devices.
+- **📝 Yap** — write a journal entry (tagged with a category like 💡 Idea or
+  😤 Emotional rant), or upload a PDF. Everything runs through one pipeline:
   `extract → chunk → embed → store`.
 - **🪞 Ask Yourself** — ask questions about yourself
   (*"What do I usually do when I'm overwhelmed?"*). Yap retrieves your most
   relevant past entries and answers **in your own voice, grounded only in what
   you've written** — no fabrication.
-- **📊 Patterns** — a lightweight recap: most-mentioned topics and journaling
+- **🎁 Personality Wrapped** — a Spotify-Wrapped-style AI recap of your week or
+  month: top themes, mood arc, and a "personality this month" blurb that
+  changes as you write more.
+- **📊 Patterns** — most-mentioned topics, category breakdown, and journaling
   activity over the last *N* days.
 
 ## Tech stack
@@ -24,7 +29,8 @@ Built for the **Girls Who Yap Fellowship 2.0** application.
 | Layer | Tool |
 |------|------|
 | Embeddings | `sentence-transformers` (all-MiniLM-L6-v2) |
-| Vector store | FAISS (`IndexFlatIP`, per user) |
+| Database + vectors | Supabase Postgres + `pgvector` |
+| Auth | username + bcrypt-hashed password |
 | Generation | Groq API · Llama-3.1-8B |
 | PDF extraction | PyMuPDF (`fitz`) |
 | App | Streamlit |
@@ -32,22 +38,18 @@ Built for the **Girls Who Yap Fellowship 2.0** application.
 
 ## Data architecture — per-user isolation
 
-FAISS stores only vectors, so each user gets two files kept in lockstep:
+Everything lives in one shared Postgres database, but every query is scoped by
+`user_id`, so one account can never read another's entries:
 
 ```
-data/users/{user_id}/
-    faiss_index.bin     ← vectors only
-    chunks.jsonl        ← id → original text + metadata {type, source, date}
+users    (id, username, password_hash, created_at)
+entries  (id, user_id, text, embedding vector(384),
+          type, category, source, created_at)
 ```
 
-**Hard rule:** one `user_id`, one folder. No code path reads or writes across
-folders — `user_id` is sanitized to a single safe path segment and the resolved
-path is asserted to stay inside the data root (`yap/storage.py`). Typed entries
-are tagged `type: "yap_entry"`, uploaded files `type: "document"`.
-
-For the MVP, `user_id` is just a name typed once into `st.session_state` — the
-folder isolation is what matters; real auth can be swapped in later without
-touching anything else.
+Typed entries are tagged `type='yap_entry'` (with a category), uploaded files
+`type='document'`. Vector similarity search uses pgvector's cosine operator
+(`embedding <=> query`), always filtered by `user_id` (`yap/storage.py`).
 
 ## Quick start
 
@@ -55,30 +57,39 @@ touching anything else.
 # 1. Install deps (a virtualenv is recommended)
 pip install -r requirements.txt
 
-# 2. Add your Groq key
-cp .env.example .env        # then edit .env and paste your key
-#   get a free key at https://console.groq.com/keys
+# 2. Configure secrets
+cp .env.example .env     # then edit .env:
+#   GROQ_API_KEY      -> https://console.groq.com/keys
+#   SUPABASE_DB_URL   -> Supabase project: Settings > Database > Connection string
 
 # 3. Run
 streamlit run app.py
 ```
 
-Open the local URL Streamlit prints, type a name in the sidebar, and start
-yapping. (Without a `GROQ_API_KEY`, ingest and Patterns still work — only the
-"Ask Yourself" answering is disabled.)
+Tables are created automatically on first run. Open the local URL, sign up, and
+start yapping.
 
 ## Project layout
 
 ```
-app.py              Streamlit UI (Yap / Ask Yourself / Patterns tabs)
+app.py              Streamlit UI (auth + Yap / Ask Yourself / Wrapped / Patterns)
 yap/
-  config.py         env-driven settings
+  config.py         env-driven settings + category list
+  db.py             Postgres connection + schema (Supabase + pgvector)
+  auth.py           signup / login (bcrypt)
   embeddings.py     cached MiniLM embedder
-  storage.py        per-user FAISS + chunks.jsonl (isolation lives here)
+  storage.py        per-user reads/writes + vector search (isolation lives here)
   ingest.py         extract → chunk → embed → store (text + PDF)
   generation.py     retrieve + Groq Llama-3.1-8B answering
-  patterns.py       keyword / activity stats for the recap view
+  wrapped.py        AI "Personality Wrapped" recap
+  patterns.py       keyword / category / activity stats
 ```
+
+## Deploy (Streamlit Community Cloud)
+
+Push to GitHub, then at [share.streamlit.io](https://share.streamlit.io) point a
+new app at this repo's `app.py`. Add `GROQ_API_KEY` and `SUPABASE_DB_URL` under
+the app's **Secrets**. That gives you a public, shareable, cross-device link.
 
 ## Roadmap (stretch)
 
