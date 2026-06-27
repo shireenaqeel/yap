@@ -56,6 +56,9 @@ def get_conn() -> psycopg.Connection:
             _conn = psycopg.connect(
                 config.DB_URL, autocommit=True, prepare_threshold=None
             )
+            # The pgvector extension must exist before its type can be
+            # registered on the connection.
+            _conn.execute("create extension if not exists vector")
             register_vector(_conn)
         return _conn
 
