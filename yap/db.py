@@ -38,6 +38,11 @@ create table if not exists entries (
 );
 
 create index if not exists entries_user_idx on entries (user_id);
+
+-- Google (OAuth) accounts have no password, so allow it to be empty and track
+-- which provider an account came from. Safe to re-run.
+alter table users add column if not exists provider text not null default 'local';
+alter table users alter column password_hash drop not null;
 """ % config.EMBED_DIM
 
 

@@ -35,9 +35,34 @@ _bootstrap()
 
 
 # ---- auth screen ----------------------------------------------------------
+def google_configured() -> bool:
+    """True only when real Google OAuth credentials are present in secrets."""
+    try:
+        cid = st.secrets["auth"]["google"]["client_id"]
+        return bool(cid) and not cid.startswith("PASTE_")
+    except Exception:
+        return False
+
+
+# If the user just came back from a Google login, turn that into our account.
+if (
+    "user_id" not in st.session_state
+    and google_configured()
+    and st.user.is_logged_in
+):
+    uid = auth.get_or_create_oauth_user(st.user.email)
+    st.session_state.update(user_id=uid, username=st.user.email)
+
+
 def auth_screen():
     st.title("💬 Yap")
     st.caption("Yap your thoughts. Ask yourself anything. Wrap your mind.")
+
+    if google_configured():
+        if st.button("🔵  Continue with Google", use_container_width=True):
+            st.login("google")
+        st.divider()
+
     tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
 
     with tab_login:
@@ -77,7 +102,10 @@ with st.sidebar:
     st.metric("Chunks stored", store.size)
     if st.button("Log out", use_container_width=True):
         st.session_state.clear()
-        st.rerun()
+        if google_configured() and st.user.is_logged_in:
+            st.logout()  # triggers its own rerun/redirect
+        else:
+            st.rerun()
     if not config.GROQ_API_KEY:
         st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
 

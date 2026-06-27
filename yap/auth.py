@@ -50,6 +50,24 @@ def log_in(username: str, password: str) -> int:
             (username,),
         )
         row = cur.fetchone()
-    if not row or not _check(password, row[1]):
+    if not row or row[1] is None or not _check(password, row[1]):
+        # row[1] is None for Google accounts — they must use "Sign in with Google".
         raise ValueError("Wrong username or password.")
     return row[0]
+
+
+def get_or_create_oauth_user(email: str, provider: str = "google") -> int:
+    """Look up (or create) an account for a verified OAuth identity. The user's
+    email becomes their username; no password is stored."""
+    email = email.strip().lower()
+    with get_conn().cursor() as cur:
+        cur.execute("select id from users where username = %s", (email,))
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute(
+            "insert into users (username, password_hash, provider) "
+            "values (%s, NULL, %s) returning id",
+            (email, provider),
+        )
+        return cur.fetchone()[0]
