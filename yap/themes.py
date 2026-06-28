@@ -50,7 +50,7 @@ THEMES: dict[str, dict] = {
         "primary_grad": "linear-gradient(135deg,#d8b873,#9c7836)",
         "btn_text": "#241c14",
         "radius": "7px",
-        "decor": ["📜", "🕯️", "📚", "🪶", "🔭"],
+        "decor": ["📜", "🕯️", "📚", "🖋️", "🦉", "☕"],
         "animated_bg": False,
     },
     "cottagecore": {
@@ -182,12 +182,13 @@ h1, h2, h3, h4 {{
 }}
 
 .stTextInput input, .stTextArea textarea,
-[data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] > div {{
+[data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="base-input"],
+[data-baseweb="select"] > div {{
   background: {t["panel"]} !important;
   border-radius: {t["radius"]} !important;
   color: {t["text"]} !important;
   font-family: {t["body_font"]} !important;
-  border: 1px solid rgba(255,255,255,.25) !important;
+  border: 1px solid rgba(125,125,125,.25) !important;
 }}
 
 [data-baseweb="tab-list"] {{ gap: 4px; }}
@@ -206,6 +207,74 @@ h1, h2, h3, h4 {{
 [data-testid="stExpander"], [data-testid="stAlert"] {{
   border-radius: {t["radius"]};
   background: {t["panel"]};
+}}
+
+/* --- robust text contrast --------------------------------------------------
+   Streamlit's base theme (light or dark) otherwise leaves widget labels in a
+   default colour that can vanish on a light theme. Force the theme's own text
+   colour onto every text-bearing widget, and theme the dropdown popovers that
+   render in a portal outside the styled container. */
+[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *,
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
+.stRadio label, .stRadio div, .stCheckbox label, .stSlider label,
+[data-testid="stExpander"] summary, details summary, details summary *,
+[data-testid="stFileUploaderDropzone"] *,
+[data-baseweb="select"] div, [data-baseweb="select"] span {{
+  color: {t["text"]} !important;
+}}
+input::placeholder, textarea::placeholder {{
+  color: {t["muted"]} !important; opacity: .85;
+}}
+
+/* dropdown / select menus render in a portal outside the themed container */
+ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] li {{
+  background: {t["panel"]} !important;
+}}
+[role="option"], ul[role="listbox"] * {{ color: {t["text"]} !important; }}
+
+/* category pills — unselected get the light panel, selected get the accent */
+[data-testid="stPills"] button {{
+  background: {t["panel"]} !important;
+  color: {t["text"]} !important;
+  border: 1px solid {t["muted"]} !important;
+}}
+[data-testid="stPills"] button[aria-checked="true"],
+[data-testid="stPills"] button[aria-pressed="true"],
+[data-testid="stPills"] button[kind="pillsActive"],
+[data-testid="stPills"] button[data-testid="stBaseButton-pillsActive"] {{
+  background: {t["primary"]} !important;
+  color: {t["btn_text"]} !important;
+  border-color: {t["primary"]} !important;
+}}
+
+.yap-hero {{
+  background: {t["primary_grad"]};
+  color: {t["btn_text"]};
+  border-radius: {t["radius"]};
+  padding: 22px 26px;
+  margin: 4px 0 22px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.20);
+  animation: fadein .6s ease both;
+}}
+.yap-hero h1 {{ color: {t["btn_text"]} !important; margin: 0; font-size: 2.1rem; }}
+.yap-hero p {{ color: {t["btn_text"]}; opacity: .92; margin: .35rem 0 0; font-family: {t["body_font"]}; }}
+
+.yap-callout {{
+  background: {t["panel"]};
+  border-left: 4px solid {t["primary"]};
+  border-radius: {t["radius"]};
+  padding: 14px 18px;
+  margin: 4px 0 16px;
+  font-family: {t["body_font"]};
+  color: {t["text"]};
+}}
+.yap-callout b {{ color: {t["primary"]}; }}
+
+.yap-section {{
+  font-family: {t["head_font"]};
+  color: {t["text"]};
+  font-size: 1.25rem;
+  margin: 6px 0 2px;
 }}
 
 @keyframes fadein {{ from {{ opacity:0; transform:translateY(10px); }} to {{ opacity:1; transform:none; }} }}
