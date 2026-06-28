@@ -232,19 +232,28 @@ ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] li {{
 }}
 [role="option"], ul[role="listbox"] * {{ color: {t["text"]} !important; }}
 
-/* category pills — unselected get the light panel, selected get the accent */
-[data-testid="stPills"] button {{
+/* category pills (Streamlit renders these as a button group) ----------------
+   Container is stButtonGroup; buttons are stBaseButton-pills /
+   stBaseButton-pillsActive (NOT stPills). Unselected get the light panel,
+   the selected one gets the accent. */
+[data-testid="stButtonGroup"] button,
+[data-testid^="stBaseButton-pills"] {{
   background: {t["panel"]} !important;
-  color: {t["text"]} !important;
   border: 1px solid {t["muted"]} !important;
 }}
-[data-testid="stPills"] button[aria-checked="true"],
-[data-testid="stPills"] button[aria-pressed="true"],
-[data-testid="stPills"] button[kind="pillsActive"],
-[data-testid="stPills"] button[data-testid="stBaseButton-pillsActive"] {{
+[data-testid="stButtonGroup"] button,
+[data-testid="stButtonGroup"] button p,
+[data-testid^="stBaseButton-pills"],
+[data-testid^="stBaseButton-pills"] p {{
+  color: {t["text"]} !important;
+}}
+[data-testid="stBaseButton-pillsActive"] {{
   background: {t["primary"]} !important;
-  color: {t["btn_text"]} !important;
   border-color: {t["primary"]} !important;
+}}
+[data-testid="stBaseButton-pillsActive"],
+[data-testid="stBaseButton-pillsActive"] p {{
+  color: {t["btn_text"]} !important;
 }}
 
 .yap-hero {{
@@ -281,8 +290,8 @@ ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] li {{
 @keyframes gradientshift {{ 0%{{background-position:0% 50%}} 50%{{background-position:100% 50%}} 100%{{background-position:0% 50%}} }}
 @keyframes floaty {{ 0%{{transform:translateY(0)}} 50%{{transform:translateY(-24px)}} 100%{{transform:translateY(0)}} }}
 
-.yap-decor {{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }}
-.yap-decor span {{ position:absolute; opacity:.45; animation: floaty 7s ease-in-out infinite; }}
+.yap-decor {{ position:fixed; inset:0; pointer-events:none; z-index:-1; overflow:hidden; }}
+.yap-decor span {{ position:absolute; opacity:.38; animation: floaty 7s ease-in-out infinite; }}
 </style>
 """
 
