@@ -1,0 +1,7 @@
+# Pin a predictable LIGHT base theme. Our own per-theme CSS (yap/themes.py)
+# paints every surface for both light and dark aesthetics with !important, so
+# this just decides the default for any widget we haven't explicitly styled —
+# keeping it light means new widgets never show up as a stray black box.
+[theme]
+base = "light"
+primaryColor = "#ff6f91"

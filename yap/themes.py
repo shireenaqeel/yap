@@ -21,6 +21,22 @@ from .storage import UserStore
 # button gradient, corner radius, button-text colour, floating decoration
 # emoji, and whether the background gently animates.
 THEMES: dict[str, dict] = {
+    "bestie": {
+        "label": "🌸 Bestie (GWY)",
+        "fonts": "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap",
+        "body_font": "'Poppins', sans-serif",
+        "head_font": "'Poppins', sans-serif",
+        "bg": "linear-gradient(165deg,#fff2f5 0%,#ffe6ee 55%,#ffeede 100%)",
+        "panel": "rgba(255,255,255,0.86)",
+        "text": "#3a2630",
+        "muted": "#8a6b75",
+        "primary": "#ff6f91",
+        "primary_grad": "linear-gradient(135deg,#ffa9c5,#ff6f91)",
+        "btn_text": "#ffffff",
+        "radius": "20px",
+        "decor": ["✿", "🌸", "💗", "🌷", "✨"],
+        "animated_bg": False,
+    },
     "ghibli": {
         "label": "🌿 Studio Ghibli",
         "fonts": "https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;700&display=swap",
@@ -119,7 +135,7 @@ THEMES: dict[str, dict] = {
     },
 }
 
-DEFAULT_THEME = "ghibli"
+DEFAULT_THEME = "bestie"
 
 
 # --- CSS generation --------------------------------------------------------
@@ -147,7 +163,11 @@ def build_css(t: dict) -> str:
   z-index: 1;
   animation: fadein .6s ease both;
   max-width: 820px;
+  padding-top: 2.2rem;
+  line-height: 1.6;
 }}
+/* generous, doradao-style breathing room between widgets */
+.block-container [data-testid="stVerticalBlock"] {{ gap: 1.05rem; }}
 .block-container p, .block-container li, .block-container label,
 [data-testid="stMarkdownContainer"], .stCaption, small {{
   font-family: {t["body_font"]};
@@ -204,9 +224,43 @@ h1, h2, h3, h4 {{
 }}
 [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{ color: {t["text"]}; }}
 
-[data-testid="stExpander"], [data-testid="stAlert"] {{
-  border-radius: {t["radius"]};
-  background: {t["panel"]};
+/* expander: the wrapper, the <details>, AND the <summary> header all need the
+   panel colour, otherwise the header keeps the dark base-theme background */
+[data-testid="stExpander"], [data-testid="stExpander"] details,
+[data-testid="stExpander"] summary, [data-testid="stAlert"] {{
+  border-radius: {t["radius"]} !important;
+  background: {t["panel"]} !important;
+}}
+[data-testid="stExpander"] summary, [data-testid="stExpander"] summary p {{
+  color: {t["text"]} !important;
+}}
+[data-testid="stExpander"] summary svg {{ fill: {t["text"]} !important; }}
+
+/* file uploader dropzone + its Browse button were dark by default */
+[data-testid="stFileUploaderDropzone"], [data-testid="stFileUploader"] section {{
+  background: {t["panel"]} !important;
+  border-radius: {t["radius"]} !important;
+}}
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {{
+  background: {t["primary_grad"]} !important;
+  color: {t["btn_text"]} !important;
+  border: none !important;
+}}
+/* the chip shown after a file is selected (was a dark pill) */
+[data-testid="stFileChips"], [data-testid="stFileChip"] {{
+  background: {t["panel"]} !important;
+  border-radius: {t["radius"]} !important;
+}}
+[data-testid="stFileChip"], [data-testid="stFileChip"] *, [data-testid="stFileChipName"] {{
+  color: {t["text"]} !important;
+}}
+[data-testid="stFileChip"] svg {{ fill: {t["text"]} !important; }}
+
+/* voice recorder widget */
+[data-testid="stAudioInput"], [data-testid="stExpanderDetails"] {{
+  background: {t["panel"]} !important;
+  border-radius: {t["radius"]} !important;
 }}
 
 /* --- robust text contrast --------------------------------------------------
@@ -294,6 +348,25 @@ ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] li {{
 .yap-decor span {{ position:absolute; opacity:.38; animation: floaty 7s ease-in-out infinite; }}
 </style>
 """
+
+
+def style_plotly(fig, t: dict):
+    """Make a Plotly figure blend with the active theme: transparent canvas,
+    theme-coloured text and axes (otherwise charts keep a black background)."""
+    grid = "rgba(125,125,125,0.18)"
+    fig.update_layout(
+        paper_bgcolor=t["panel"],      # sit on a themed card, like the metrics
+        plot_bgcolor="rgba(0,0,0,0)",
+        font_color=t["text"],
+        font_family=t["body_font"].split(",")[0].strip("'\""),
+        title_font_color=t["text"],
+        legend_font_color=t["text"],
+        margin=dict(t=56, l=14, r=20, b=44),
+    )
+    # automargin so y-axis category labels are never clipped
+    fig.update_xaxes(color=t["text"], gridcolor=grid, zerolinecolor=grid, automargin=True)
+    fig.update_yaxes(color=t["text"], gridcolor=grid, zerolinecolor=grid, automargin=True)
+    return fig
 
 
 def decor_html(t: dict, theme_key: str = "") -> str:

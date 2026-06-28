@@ -22,6 +22,7 @@ from yap import (  # noqa: E402
     auth,
     card,
     config,
+    connectors,
     db,
     generation,
     ingest,
@@ -122,6 +123,10 @@ if not st.session_state.get("_theme_loaded"):
         st.session_state["theme"] = _saved_theme
         st.rerun()
 
+# Load the user's saved profile (bio + social links) once per session.
+if "profile" not in st.session_state:
+    st.session_state["profile"] = auth.get_profile(st.session_state["user_id"])
+
 # ---- sidebar --------------------------------------------------------------
 with st.sidebar:
     st.title("💬 Yap")
@@ -151,6 +156,28 @@ with st.sidebar:
         auth.set_theme(st.session_state["user_id"], st.session_state["theme"])
         st.rerun()
 
+    with st.expander("⚙️ Account & data"):
+        st.caption(f"{store.size} chunks stored.")
+
+        if st.checkbox("I want to clear ALL my entries", key="confirm_clear"):
+            if st.button("🧹 Clear everything", key="clear_all", use_container_width=True):
+                with st.spinner("Clearing…"):
+                    n = store.clear()
+                st.success(f"Cleared {n} chunk(s).")
+                st.rerun()
+
+        st.divider()
+        if st.checkbox("Permanently delete my account", key="confirm_delete"):
+            st.warning("This erases your account and every entry. Cannot be undone.")
+            if st.button("❌ Delete my account", key="delete_acct", use_container_width=True):
+                _was_google = google_configured() and st.user.is_logged_in
+                auth.delete_account(st.session_state["user_id"])
+                st.session_state.clear()
+                if _was_google:
+                    st.logout()  # triggers its own redirect
+                else:
+                    st.rerun()
+
     if not config.GROQ_API_KEY:
         st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
 
@@ -164,8 +191,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_yap, tab_ask, tab_wrapped, tab_patterns = st.tabs(
-    ["📝 Yap", "🪞 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
+tab_yap, tab_journal, tab_ask, tab_wrapped, tab_patterns = st.tabs(
+    ["📝 Yap", "🗂️ Journal", "🪞 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
 )
 
 # ---- Yap tab --------------------------------------------------------------
@@ -223,7 +250,70 @@ with tab_yap:
         else:
             st.warning("Write something first.")
 
-    with st.expander("📎 Upload a document instead (PDF)"):
+    with st.expander("🔗 Bring in your world — GitHub, links, bio & docs"):
+        st.caption(
+            "Import your projects and links so you can ask yourself about them "
+            "later — *“what have I built with Python?”*"
+        )
+
+        st.markdown("**🐙 GitHub projects**")
+        gh = st.text_input(
+            "GitHub username", key="gh_user", placeholder="e.g. shireenaqeel",
+        )
+        if st.button("Import my GitHub", key="gh_btn"):
+            if gh.strip():
+                try:
+                    with st.spinner(f"Reading {gh.strip()}'s repos…"):
+                        n_repos, n_chunks = connectors.import_github(store, gh)
+                    st.success(f"Imported {n_repos} projects — {n_chunks} chunk(s).")
+                except ValueError as e:
+                    st.error(str(e))
+            else:
+                st.warning("Enter your GitHub username first.")
+
+        st.markdown("**🌐 Your socials & bio**")
+        _prof = st.session_state.get("profile", {})
+        # Pre-fill each box from the saved profile (set defaults before widgets).
+        for _wkey, _pkey in [
+            ("pf_linkedin", "linkedin"), ("pf_twitter", "twitter"),
+            ("pf_instagram", "instagram"), ("pf_website", "website"),
+            ("pf_bio", "bio"),
+        ]:
+            st.session_state.setdefault(_wkey, _prof.get(_pkey, ""))
+
+        fc1, fc2 = st.columns(2)
+        fc1.text_input("💼 LinkedIn", key="pf_linkedin", placeholder="linkedin.com/in/…")
+        fc2.text_input("🐦 X / Twitter", key="pf_twitter", placeholder="x.com/…")
+        fc1.text_input("📸 Instagram", key="pf_instagram", placeholder="instagram.com/…")
+        fc2.text_input("🌍 Website / Portfolio", key="pf_website", placeholder="yoursite.com")
+        st.text_area("📝 Short bio", key="pf_bio", placeholder="A line or two about you.", height=90)
+
+        if st.button("Save profile", key="pf_save"):
+            profile = {
+                "linkedin": st.session_state["pf_linkedin"].strip(),
+                "twitter": st.session_state["pf_twitter"].strip(),
+                "instagram": st.session_state["pf_instagram"].strip(),
+                "website": st.session_state["pf_website"].strip(),
+                "bio": st.session_state["pf_bio"].strip(),
+            }
+            auth.set_profile(st.session_state["user_id"], profile)
+            st.session_state["profile"] = profile
+            # Rebuild the searchable profile entry (replace, don't duplicate).
+            store.delete_by_type("profile")
+            _lines = []
+            if profile["bio"]:
+                _lines.append(f"Bio: {profile['bio']}")
+            for _label, _key in [
+                ("LinkedIn", "linkedin"), ("X/Twitter", "twitter"),
+                ("Instagram", "instagram"), ("Website", "website"),
+            ]:
+                if profile[_key]:
+                    _lines.append(f"{_label}: {profile[_key]}")
+            if _lines:
+                ingest.ingest_text(store, "\n".join(_lines), type_="profile")
+            st.success("Profile saved.")
+
+        st.markdown("**📎 Document (PDF)**")
         pdf = st.file_uploader(
             "Resume, a 'how I think' profile, notes…", type="pdf",
             label_visibility="collapsed",
@@ -232,6 +322,26 @@ with tab_yap:
             with st.spinner(f"Extracting & embedding {pdf.name}…"):
                 added = ingest.ingest_pdf(store, pdf.getvalue(), pdf.name)
             st.success(f"Ingested {pdf.name} — {added} chunk(s) added.")
+
+# ---- Journal tab ----------------------------------------------------------
+with tab_journal:
+    st.markdown('<div class="yap-section">🗂️ Your journal</div>', unsafe_allow_html=True)
+    _entries = store.list_entries()
+    if not _entries:
+        st.info("Nothing here yet — go yap something on the 📝 Yap tab!")
+    else:
+        st.caption(f"{len(_entries)} most recent entries · newest first.")
+        for e in _entries:
+            with st.container(border=True):
+                row_l, row_r = st.columns([6, 1])
+                tag = e.get("category") or e.get("type", "entry")
+                src = f" · {e['source']}" if e.get("source") else ""
+                row_l.markdown(f"**{tag}**{src} · {e.get('date', '')[:10]}")
+                text = e["text"]
+                row_l.write(text if len(text) <= 400 else text[:400] + "…")
+                if row_r.button("🗑️", key=f"del_{e['id']}", help="Delete this entry"):
+                    store.delete(e["id"])
+                    st.rerun()
 
 # ---- Ask Yourself tab -----------------------------------------------------
 with tab_ask:
@@ -330,9 +440,9 @@ with tab_patterns:
 
     if data["categories"]:
         cats, ccounts = zip(*data["categories"])
+        fig = px.pie(names=list(cats), values=list(ccounts), title="Your categories")
         st.plotly_chart(
-            px.pie(names=list(cats), values=list(ccounts), title="Your categories"),
-            use_container_width=True,
+            themes.style_plotly(fig, _theme), use_container_width=True, theme=None
         )
 
     if data["keywords"]:
@@ -343,15 +453,21 @@ with tab_patterns:
             title="Most-mentioned topics",
         )
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_traces(marker_color=_theme["primary"])
+        st.plotly_chart(
+            themes.style_plotly(fig, _theme), use_container_width=True, theme=None
+        )
     elif not data["categories"]:
         st.info("Not enough written yet to find patterns. Yap a few entries!")
 
     if data["activity"]:
         adates, acounts = zip(*data["activity"])
+        fig = px.line(
+            x=list(adates), y=list(acounts),
+            labels={"x": "Date", "y": "Chunks added"},
+            title="Journaling activity",
+        )
+        fig.update_traces(line_color=_theme["primary"])
         st.plotly_chart(
-            px.line(x=list(adates), y=list(acounts),
-                    labels={"x": "Date", "y": "Chunks added"},
-                    title="Journaling activity"),
-            use_container_width=True,
+            themes.style_plotly(fig, _theme), use_container_width=True, theme=None
         )
