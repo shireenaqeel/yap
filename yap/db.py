@@ -43,6 +43,9 @@ create index if not exists entries_user_idx on entries (user_id);
 -- which provider an account came from. Safe to re-run.
 alter table users add column if not exists provider text not null default 'local';
 alter table users alter column password_hash drop not null;
+
+-- Per-user UI preferences (e.g. chosen aesthetic theme). Safe to re-run.
+alter table users add column if not exists theme text;
 """ % config.EMBED_DIM
 
 

@@ -56,6 +56,20 @@ def log_in(username: str, password: str) -> int:
     return row[0]
 
 
+def get_theme(user_id: int) -> str | None:
+    """Return the user's saved aesthetic theme, or None if they haven't set one."""
+    with get_conn().cursor() as cur:
+        cur.execute("select theme from users where id = %s", (user_id,))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def set_theme(user_id: int, theme: str) -> None:
+    """Persist the user's chosen aesthetic theme."""
+    with get_conn().cursor() as cur:
+        cur.execute("update users set theme = %s where id = %s", (theme, user_id))
+
+
 def get_or_create_oauth_user(email: str, provider: str = "google") -> int:
     """Look up (or create) an account for a verified OAuth identity. The user's
     email becomes their username; no password is stored."""

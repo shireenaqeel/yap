@@ -114,11 +114,18 @@ if "user_id" not in st.session_state:
 
 store = UserStore(st.session_state["user_id"])
 
+# Load the user's saved aesthetic once per session, then re-render with it.
+if not st.session_state.get("_theme_loaded"):
+    st.session_state["_theme_loaded"] = True
+    _saved_theme = auth.get_theme(st.session_state["user_id"])
+    if _saved_theme in themes.THEMES and _saved_theme != st.session_state["theme"]:
+        st.session_state["theme"] = _saved_theme
+        st.rerun()
+
 # ---- sidebar --------------------------------------------------------------
 with st.sidebar:
     st.title("💬 Yap")
-    st.success(f"Signed in as **{st.session_state['username']}**")
-    st.metric("Chunks stored", store.size)
+    st.caption(f"Signed in as **{st.session_state['username']}**")
     if st.button("Log out", use_container_width=True):
         st.session_state.clear()
         if google_configured() and st.user.is_logged_in:
@@ -136,15 +143,26 @@ with st.sidebar:
     )
     if _picked != st.session_state["theme"]:
         st.session_state["theme"] = _picked
+        auth.set_theme(st.session_state["user_id"], _picked)
         st.rerun()
     if st.button("✨ Match my vibe", use_container_width=True):
         with st.spinner("Reading your aesthetic…"):
             st.session_state["theme"] = themes.suggest_theme(store)
+        auth.set_theme(st.session_state["user_id"], st.session_state["theme"])
         st.rerun()
 
     if not config.GROQ_API_KEY:
         st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
 
+
+# ---- hero banner (themed) -------------------------------------------------
+_name = st.session_state["username"].split("@")[0]
+st.markdown(
+    f'<div class="yap-hero"><h1>💬 Hey {_name}</h1>'
+    f"<p>Yap your thoughts · ask yourself anything · wrap your mind"
+    f" — {store.size} chunks remembered</p></div>",
+    unsafe_allow_html=True,
+)
 
 tab_yap, tab_ask, tab_wrapped, tab_patterns = st.tabs(
     ["📝 Yap", "🪞 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
@@ -152,79 +170,95 @@ tab_yap, tab_ask, tab_wrapped, tab_patterns = st.tabs(
 
 # ---- Yap tab --------------------------------------------------------------
 with tab_yap:
-    if st.button("💭 Give me a reflection prompt"):
+    # Clearing / success must happen before the entry widget is instantiated.
+    if st.session_state.pop("clear_entry", False):
+        st.session_state["entry_box"] = ""
+    _saved = st.session_state.pop("last_saved", None)
+    if _saved:
+        st.success(f"Saved as {_saved[0]} — {_saved[1]} chunk(s) added.")
+
+    head_l, head_r = st.columns([3, 1])
+    head_l.markdown('<div class="yap-section">📝 Compose</div>', unsafe_allow_html=True)
+    if head_r.button("💭 Prompt me", use_container_width=True):
         with st.spinner("Thinking about what you've written…"):
             st.session_state["reflect"] = prompts.reflection_prompt(store)
     if "reflect" in st.session_state:
-        st.info(f"**Reflect:** {st.session_state['reflect']}")
+        st.markdown(
+            f'<div class="yap-callout"><b>Reflect:</b> '
+            f"{st.session_state['reflect']}</div>",
+            unsafe_allow_html=True,
+        )
 
-    st.subheader("Yap an entry")
-    category = st.selectbox("Tag this yap", config.CATEGORIES, index=2)
-    entry = st.text_area("What's on your mind?", height=180, key="entry_box")
+    category = st.pills(
+        "Tag this yap",
+        config.CATEGORIES,
+        default=config.CATEGORIES[2],
+        key="yap_cat",
+    ) or config.CATEGORIES[2]
+
+    # Voice is just another way to fill the SAME entry box — not a separate flow.
+    with st.expander("🎙️ Prefer to talk? Record and it drops into your entry below"):
+        v_audio = st.audio_input("Record", key="yap_audio", label_visibility="collapsed")
+        if v_audio is not None and st.button("Transcribe into entry", key="yap_tx"):
+            if not config.GROQ_API_KEY:
+                st.warning("No GROQ_API_KEY set — voice input needs it.")
+            else:
+                with st.spinner("Transcribing your voice…"):
+                    txt = transcribe.transcribe(v_audio.getvalue())
+                prev = st.session_state.get("entry_box", "")
+                st.session_state["entry_box"] = f"{prev} {txt}".strip() if prev else txt
+                st.rerun()
+
+    entry = st.text_area(
+        "What's on your mind?", height=180, key="entry_box",
+        placeholder="Type here, or use the mic above…",
+    )
     if st.button("Save entry", type="primary"):
         if entry.strip():
             with st.spinner("Embedding & storing…"):
                 added = ingest.ingest_text(store, entry, category=category)
-            st.success(f"Saved as {category} — {added} chunk(s) added.")
+            st.session_state["last_saved"] = (category, added)
+            st.session_state["clear_entry"] = True
+            st.rerun()
         else:
             st.warning("Write something first.")
 
-    st.divider()
-    st.subheader("🎙️ Or speak your yap")
-    st.caption("Record out loud — Yap transcribes it so you can review and save.")
-    audio = st.audio_input("Tap to record, then stop")
-    if audio is not None and st.button("Transcribe"):
-        if not config.GROQ_API_KEY:
-            st.warning("No GROQ_API_KEY set — voice input needs it.")
-        else:
-            with st.spinner("Transcribing your voice…"):
-                st.session_state["voice_text"] = transcribe.transcribe(audio.getvalue())
-    if "voice_text" in st.session_state:
-        v_cat = st.selectbox(
-            "Tag this yap", config.CATEGORIES, index=2, key="voice_cat"
+    with st.expander("📎 Upload a document instead (PDF)"):
+        pdf = st.file_uploader(
+            "Resume, a 'how I think' profile, notes…", type="pdf",
+            label_visibility="collapsed",
         )
-        v_text = st.text_area(
-            "Transcript (edit if needed)",
-            value=st.session_state["voice_text"],
-            height=160,
-            key="voice_edit",
-        )
-        if st.button("Save voice entry", type="primary"):
-            if v_text.strip():
-                with st.spinner("Embedding & storing…"):
-                    added = ingest.ingest_text(store, v_text, category=v_cat)
-                st.success(f"Saved as {v_cat} — {added} chunk(s) added.")
-                del st.session_state["voice_text"]
-            else:
-                st.warning("Nothing to save — the transcript is empty.")
-
-    st.divider()
-    st.subheader("Or upload a document (PDF)")
-    pdf = st.file_uploader("Resume, a 'how I think' profile, notes…", type="pdf")
-    if pdf is not None and st.button("Ingest PDF"):
-        with st.spinner(f"Extracting & embedding {pdf.name}…"):
-            added = ingest.ingest_pdf(store, pdf.getvalue(), pdf.name)
-        st.success(f"Ingested {pdf.name} — {added} chunk(s) added.")
+        if pdf is not None and st.button("Ingest PDF"):
+            with st.spinner(f"Extracting & embedding {pdf.name}…"):
+                added = ingest.ingest_pdf(store, pdf.getvalue(), pdf.name)
+            st.success(f"Ingested {pdf.name} — {added} chunk(s) added.")
 
 # ---- Ask Yourself tab -----------------------------------------------------
 with tab_ask:
-    st.subheader("Ask yourself")
+    st.markdown('<div class="yap-section">🪞 Ask yourself</div>', unsafe_allow_html=True)
     st.caption(
         "e.g. *What do I usually do when I'm overwhelmed?* · "
         "*What have I been excited about lately?*"
     )
-    q_audio = st.audio_input("🎙️ Or ask out loud", key="ask_audio")
-    if q_audio is not None and st.button("Transcribe question"):
-        if not config.GROQ_API_KEY:
-            st.warning("No GROQ_API_KEY set — voice input needs it.")
-        else:
-            with st.spinner("Transcribing your question…"):
-                st.session_state["question_box"] = transcribe.transcribe(
-                    q_audio.getvalue()
-                )
 
-    question = st.text_input("Your question", key="question_box")
-    if st.button("Ask", type="primary"):
+    with st.expander("🎙️ Prefer to ask out loud? Record and it fills the question"):
+        q_audio = st.audio_input("Record", key="ask_audio", label_visibility="collapsed")
+        if q_audio is not None and st.button("Transcribe question", key="ask_tx"):
+            if not config.GROQ_API_KEY:
+                st.warning("No GROQ_API_KEY set — voice input needs it.")
+            else:
+                with st.spinner("Transcribing your question…"):
+                    st.session_state["question_box"] = transcribe.transcribe(
+                        q_audio.getvalue()
+                    )
+                st.rerun()
+
+    q_col, btn_col = st.columns([4, 1])
+    question = q_col.text_input(
+        "Your question", key="question_box", label_visibility="collapsed",
+        placeholder="Ask yourself anything…",
+    )
+    if btn_col.button("Ask", type="primary", use_container_width=True):
         if not question.strip():
             st.warning("Type a question first.")
         else:
@@ -251,7 +285,10 @@ with tab_ask:
 
 # ---- Wrapped tab ----------------------------------------------------------
 with tab_wrapped:
-    st.subheader("🎁 Your Personality Wrapped")
+    st.markdown(
+        '<div class="yap-section">🎁 Your Personality Wrapped</div>',
+        unsafe_allow_html=True,
+    )
     span = st.radio("Wrap my…", ["This week", "This month"], horizontal=True)
     days = 7 if span == "This week" else 30
     if st.button("Generate my Wrapped", type="primary"):
@@ -268,19 +305,21 @@ with tab_wrapped:
         st.markdown(w["recap"])
 
         st.divider()
-        st.caption("📸 Share your Wrapped")
+        st.markdown('<div class="yap-section">📸 Share it</div>', unsafe_allow_html=True)
         png = card.render_card(w, st.session_state["username"])
-        st.image(png, caption="Your shareable card")
-        st.download_button(
+        mid = st.columns([1, 3, 1])[1]
+        mid.image(png, use_container_width=True)
+        mid.download_button(
             "📥 Download card",
             png,
             file_name="yap-wrapped.png",
             mime="image/png",
+            use_container_width=True,
         )
 
 # ---- Patterns tab ---------------------------------------------------------
 with tab_patterns:
-    st.subheader("Your patterns")
+    st.markdown('<div class="yap-section">📊 Your patterns</div>', unsafe_allow_html=True)
     days = st.slider("Look back over the last N days", 7, 365, 30, step=7)
     data = patterns.summary(store, days=days)
 
