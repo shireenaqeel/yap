@@ -17,6 +17,8 @@ EMBED_DIM = 384  # all-MiniLM-L6-v2 output dimensionality
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+# Speech-to-text model (Groq-hosted Whisper) for voice yapping.
+GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
 
 # Ingest / retrieval tuning
 CHUNK_SIZE = 600      # characters per chunk
