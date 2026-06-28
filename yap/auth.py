@@ -70,6 +70,32 @@ def set_theme(user_id: int, theme: str) -> None:
         cur.execute("update users set theme = %s where id = %s", (theme, user_id))
 
 
+def get_profile(user_id: int) -> dict:
+    """Return the user's saved bio + social links (empty dict if none)."""
+    with get_conn().cursor() as cur:
+        cur.execute("select profile from users where id = %s", (user_id,))
+        row = cur.fetchone()
+    return (row[0] if row and row[0] else {}) or {}
+
+
+def set_profile(user_id: int, profile: dict) -> None:
+    """Persist the user's bio + social links."""
+    from psycopg.types.json import Jsonb
+
+    with get_conn().cursor() as cur:
+        cur.execute(
+            "update users set profile = %s where id = %s",
+            (Jsonb(profile), user_id),
+        )
+
+
+def delete_account(user_id: int) -> None:
+    """Permanently delete the account. Entries are removed automatically via the
+    `on delete cascade` foreign key on entries.user_id."""
+    with get_conn().cursor() as cur:
+        cur.execute("delete from users where id = %s", (user_id,))
+
+
 def get_or_create_oauth_user(email: str, provider: str = "google") -> int:
     """Look up (or create) an account for a verified OAuth identity. The user's
     email becomes their username; no password is stored."""

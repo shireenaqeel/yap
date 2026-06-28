@@ -36,13 +36,20 @@ def chunk_text(text: str) -> list[str]:
     return [c for c in chunks if c]
 
 
-def ingest_text(store: UserStore, text: str, category: str | None = None) -> int:
-    """Ingest a typed journal entry with an optional category tag."""
+def ingest_text(
+    store: UserStore,
+    text: str,
+    category: str | None = None,
+    type_: str = "yap_entry",
+) -> int:
+    """Ingest typed text. Defaults to a journal entry; pass type_ (e.g.
+    'profile') to tag it differently while reusing the same pipeline."""
     chunks = chunk_text(text)
     if not chunks:
         return 0
     vectors = embed(chunks)
-    metadata = {"type": "yap_entry", "source": "typed", "category": category}
+    source = "typed" if type_ == "yap_entry" else type_
+    metadata = {"type": type_, "source": source, "category": category}
     return store.add(chunks, vectors, metadata)
 
 

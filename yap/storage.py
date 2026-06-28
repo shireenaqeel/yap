@@ -80,6 +80,45 @@ class UserStore:
                 out.append(d)
             return out
 
+    def list_entries(self, limit: int = 300) -> list[dict]:
+        """Most-recent-first entries with their ids (for the journal view)."""
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "select id, text, type, category, source, created_at "
+                "from entries where user_id = %s order by created_at desc limit %s",
+                (self.user_id, limit),
+            )
+            out = []
+            for r in cur.fetchall():
+                d = self._row(r[1:])
+                d["id"] = r[0]
+                out.append(d)
+            return out
+
+    # ---- deletes ---------------------------------------------------------
+    def delete(self, entry_id: int) -> None:
+        """Delete one entry — scoped by user_id so you can only delete your own."""
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "delete from entries where id = %s and user_id = %s",
+                (int(entry_id), self.user_id),
+            )
+
+    def clear(self) -> int:
+        """Delete every entry for this user. Returns how many chunks were removed."""
+        with get_conn().cursor() as cur:
+            cur.execute("delete from entries where user_id = %s", (self.user_id,))
+            return cur.rowcount
+
+    def delete_by_type(self, type_: str) -> None:
+        """Delete all of this user's entries of a given type (e.g. 'profile'),
+        so re-saving doesn't pile up duplicates."""
+        with get_conn().cursor() as cur:
+            cur.execute(
+                "delete from entries where user_id = %s and type = %s",
+                (self.user_id, type_),
+            )
+
     @staticmethod
     def _row(r) -> dict:
         return {

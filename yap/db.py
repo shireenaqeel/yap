@@ -46,6 +46,9 @@ alter table users alter column password_hash drop not null;
 
 -- Per-user UI preferences (e.g. chosen aesthetic theme). Safe to re-run.
 alter table users add column if not exists theme text;
+
+-- Per-user profile: bio + individual social links, stored as JSON.
+alter table users add column if not exists profile jsonb;
 """ % config.EMBED_DIM
 
 
