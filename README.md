@@ -58,9 +58,12 @@ Typed entries are tagged `type='yap_entry'` (with a category), uploaded files
 pip install -r requirements.txt
 
 # 2. Configure secrets
-cp .env.example .env     # then edit .env:
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# then edit .streamlit/secrets.toml and set at least:
 #   GROQ_API_KEY      -> https://console.groq.com/keys
 #   SUPABASE_DB_URL   -> Supabase project: Settings > Database > Connection string
+# The [auth] / [auth.google] section is optional — fill it in only to enable
+# "Sign in with Google" (username + password works without it).
 
 # 3. Run
 streamlit run app.py
