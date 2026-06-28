@@ -18,7 +18,20 @@ except Exception:
 
 import plotly.express as px  # noqa: E402
 
-from yap import auth, config, db, generation, ingest, patterns, wrapped  # noqa: E402
+from yap import (  # noqa: E402
+    auth,
+    card,
+    config,
+    db,
+    generation,
+    ingest,
+    patterns,
+    prompts,
+    speech,
+    themes,
+    transcribe,
+    wrapped,
+)
 from yap.storage import UserStore  # noqa: E402
 
 st.set_page_config(page_title="Yap", page_icon="💬", layout="centered")
@@ -32,6 +45,12 @@ def _bootstrap():
 
 
 _bootstrap()
+
+# ---- aesthetic theme (restyles the whole app, incl. the login screen) -----
+_theme_key = st.session_state.setdefault("theme", themes.DEFAULT_THEME)
+_theme = themes.THEMES.get(_theme_key, themes.THEMES[themes.DEFAULT_THEME])
+st.markdown(themes.build_css(_theme), unsafe_allow_html=True)
+st.markdown(themes.decor_html(_theme, _theme_key), unsafe_allow_html=True)
 
 
 # ---- auth screen ----------------------------------------------------------
@@ -106,6 +125,23 @@ with st.sidebar:
             st.logout()  # triggers its own rerun/redirect
         else:
             st.rerun()
+
+    st.divider()
+    _keys = list(themes.THEMES)
+    _picked = st.selectbox(
+        "🎨 Aesthetic",
+        _keys,
+        index=_keys.index(st.session_state["theme"]),
+        format_func=lambda k: themes.THEMES[k]["label"],
+    )
+    if _picked != st.session_state["theme"]:
+        st.session_state["theme"] = _picked
+        st.rerun()
+    if st.button("✨ Match my vibe", use_container_width=True):
+        with st.spinner("Reading your aesthetic…"):
+            st.session_state["theme"] = themes.suggest_theme(store)
+        st.rerun()
+
     if not config.GROQ_API_KEY:
         st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
 
@@ -116,6 +152,12 @@ tab_yap, tab_ask, tab_wrapped, tab_patterns = st.tabs(
 
 # ---- Yap tab --------------------------------------------------------------
 with tab_yap:
+    if st.button("💭 Give me a reflection prompt"):
+        with st.spinner("Thinking about what you've written…"):
+            st.session_state["reflect"] = prompts.reflection_prompt(store)
+    if "reflect" in st.session_state:
+        st.info(f"**Reflect:** {st.session_state['reflect']}")
+
     st.subheader("Yap an entry")
     category = st.selectbox("Tag this yap", config.CATEGORIES, index=2)
     entry = st.text_area("What's on your mind?", height=180, key="entry_box")
@@ -126,6 +168,35 @@ with tab_yap:
             st.success(f"Saved as {category} — {added} chunk(s) added.")
         else:
             st.warning("Write something first.")
+
+    st.divider()
+    st.subheader("🎙️ Or speak your yap")
+    st.caption("Record out loud — Yap transcribes it so you can review and save.")
+    audio = st.audio_input("Tap to record, then stop")
+    if audio is not None and st.button("Transcribe"):
+        if not config.GROQ_API_KEY:
+            st.warning("No GROQ_API_KEY set — voice input needs it.")
+        else:
+            with st.spinner("Transcribing your voice…"):
+                st.session_state["voice_text"] = transcribe.transcribe(audio.getvalue())
+    if "voice_text" in st.session_state:
+        v_cat = st.selectbox(
+            "Tag this yap", config.CATEGORIES, index=2, key="voice_cat"
+        )
+        v_text = st.text_area(
+            "Transcript (edit if needed)",
+            value=st.session_state["voice_text"],
+            height=160,
+            key="voice_edit",
+        )
+        if st.button("Save voice entry", type="primary"):
+            if v_text.strip():
+                with st.spinner("Embedding & storing…"):
+                    added = ingest.ingest_text(store, v_text, category=v_cat)
+                st.success(f"Saved as {v_cat} — {added} chunk(s) added.")
+                del st.session_state["voice_text"]
+            else:
+                st.warning("Nothing to save — the transcript is empty.")
 
     st.divider()
     st.subheader("Or upload a document (PDF)")
@@ -142,22 +213,41 @@ with tab_ask:
         "e.g. *What do I usually do when I'm overwhelmed?* · "
         "*What have I been excited about lately?*"
     )
+    q_audio = st.audio_input("🎙️ Or ask out loud", key="ask_audio")
+    if q_audio is not None and st.button("Transcribe question"):
+        if not config.GROQ_API_KEY:
+            st.warning("No GROQ_API_KEY set — voice input needs it.")
+        else:
+            with st.spinner("Transcribing your question…"):
+                st.session_state["question_box"] = transcribe.transcribe(
+                    q_audio.getvalue()
+                )
+
     question = st.text_input("Your question", key="question_box")
     if st.button("Ask", type="primary"):
         if not question.strip():
             st.warning("Type a question first.")
         else:
             with st.spinner("Looking through your own words…"):
-                result = generation.answer(store, question)
-            st.markdown(f"> {result['answer']}")
-            if result["sources"]:
-                with st.expander(f"Grounded in {len(result['sources'])} of your entries"):
-                    for s in result["sources"]:
-                        cat = f" · {s['category']}" if s.get("category") else ""
-                        meta = f"{s.get('type','entry')}{cat} · {s.get('date','')[:10]} · score {s['score']:.2f}"
-                        st.markdown(f"**{meta}**")
-                        st.write(s["text"])
-                        st.divider()
+                st.session_state["last_answer"] = generation.answer(store, question)
+            st.session_state.pop("answer_audio", None)  # drop stale read-back
+
+    if "last_answer" in st.session_state:
+        result = st.session_state["last_answer"]
+        st.markdown(f"> {result['answer']}")
+        if st.button("🔊 Read it back to me"):
+            with st.spinner("Generating audio…"):
+                st.session_state["answer_audio"] = speech.speak(result["answer"])
+        if "answer_audio" in st.session_state:
+            st.audio(st.session_state["answer_audio"], format="audio/mp3")
+        if result["sources"]:
+            with st.expander(f"Grounded in {len(result['sources'])} of your entries"):
+                for s in result["sources"]:
+                    cat = f" · {s['category']}" if s.get("category") else ""
+                    meta = f"{s.get('type','entry')}{cat} · {s.get('date','')[:10]} · score {s['score']:.2f}"
+                    st.markdown(f"**{meta}**")
+                    st.write(s["text"])
+                    st.divider()
 
 # ---- Wrapped tab ----------------------------------------------------------
 with tab_wrapped:
@@ -176,6 +266,17 @@ with tab_wrapped:
         c2.metric("Top category", (s["top_category"] or "—"))
         c3.metric("Period", s["period"].title())
         st.markdown(w["recap"])
+
+        st.divider()
+        st.caption("📸 Share your Wrapped")
+        png = card.render_card(w, st.session_state["username"])
+        st.image(png, caption="Your shareable card")
+        st.download_button(
+            "📥 Download card",
+            png,
+            file_name="yap-wrapped.png",
+            mime="image/png",
+        )
 
 # ---- Patterns tab ---------------------------------------------------------
 with tab_patterns:
