@@ -6,7 +6,7 @@ colorTo: purple
 sdk: docker
 app_port: 8501
 pinned: false
-short_description: A private journaling app with an AI that learns your patterns.
+short_description: Private journaling with an AI that learns your patterns
 ---
 
 # 💬 Yap
