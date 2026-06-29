@@ -32,5 +32,5 @@ CATEGORIES = [
     "🎲 Random",
     "🎯 Goal",
     "🙏 Gratitude",
-    "🪞 Reflection",
+    "🧠 Reflection",
 ]

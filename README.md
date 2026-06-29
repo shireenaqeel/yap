@@ -1,3 +1,15 @@
+---
+title: Yap
+emoji: 💬
+colorFrom: pink
+colorTo: purple
+sdk: streamlit
+sdk_version: 1.48.1
+app_file: app.py
+pinned: false
+short_description: A private journaling app with an AI that learns your patterns.
+---
+
 # 💬 Yap
 
 A private journaling app where anyone can *yap* their thoughts and get a personal

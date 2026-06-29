@@ -16,6 +16,11 @@ try:
 except Exception:
     pass
 
+# Eagerly import pandas BEFORE plotly. plotly.express imports pandas lazily, and
+# under Streamlit that first import lands on the script-runner thread where
+# narwhals/plotly re-enter it mid-init → "partially initialized module 'pandas'
+# has no attribute 'Series'". Forcing a full import here closes that race.
+import pandas  # noqa: E402, F401
 import plotly.express as px  # noqa: E402
 
 from yap import (  # noqa: E402
@@ -192,7 +197,7 @@ st.markdown(
 )
 
 tab_yap, tab_journal, tab_ask, tab_wrapped, tab_patterns = st.tabs(
-    ["📝 Yap", "🗂️ Journal", "🪞 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
+    ["📝 Yap", "🗂️ Journal", "🧠 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
 )
 
 # ---- Yap tab --------------------------------------------------------------
@@ -345,7 +350,7 @@ with tab_journal:
 
 # ---- Ask Yourself tab -----------------------------------------------------
 with tab_ask:
-    st.markdown('<div class="yap-section">🪞 Ask yourself</div>', unsafe_allow_html=True)
+    st.markdown('<div class="yap-section">🧠 Ask yourself</div>', unsafe_allow_html=True)
     st.caption(
         "e.g. *What do I usually do when I'm overwhelmed?* · "
         "*What have I been excited about lately?*"
