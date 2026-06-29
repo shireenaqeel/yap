@@ -11,6 +11,8 @@ short_description: Private journaling with an AI that learns your patterns
 
 # 💬 Yap
 
+**🚀 Live app: https://shireenaqeel-yap.hf.space**
+
 A private journaling app where anyone can *yap* their thoughts and get a personal
 AI that learns their own patterns over time. Most journaling apps just store
 entries — Yap reflects your own patterns back to you, grounded only in your own
