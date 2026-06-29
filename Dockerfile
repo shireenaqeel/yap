@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=user . .
 
 # HF routes external traffic to the port declared as `app_port` in README.md.
+# start.sh writes .streamlit/secrets.toml from env (for Google OAuth) then
+# launches Streamlit.
 EXPOSE 8501
-CMD ["streamlit", "run", "app.py", \
-     "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+CMD ["sh", "start.sh"]
