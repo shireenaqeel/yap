@@ -17,7 +17,8 @@ _conn: psycopg.Connection | None = None
 _lock = threading.Lock()
 
 SCHEMA = """
-create extension if not exists vector;
+create schema if not exists extensions;
+create extension if not exists vector with schema extensions;
 
 create table if not exists users (
     id            bigserial primary key,
@@ -49,6 +50,12 @@ alter table users add column if not exists theme text;
 
 -- Per-user profile: bio + individual social links, stored as JSON.
 alter table users add column if not exists profile jsonb;
+
+-- Supabase exposes the public schema over its REST API. RLS with no policies
+-- blocks that path entirely; the app connects as the table owner, which
+-- bypasses RLS, so its own queries are unaffected. Safe to re-run.
+alter table users enable row level security;
+alter table entries enable row level security;
 """ % config.EMBED_DIM
 
 
@@ -69,7 +76,8 @@ def get_conn() -> psycopg.Connection:
             )
             # The pgvector extension must exist before its type can be
             # registered on the connection.
-            _conn.execute("create extension if not exists vector")
+            _conn.execute("create schema if not exists extensions")
+            _conn.execute("create extension if not exists vector with schema extensions")
             register_vector(_conn)
         return _conn
 
