@@ -84,8 +84,19 @@ def auth_screen():
     st.caption("Yap your thoughts. Ask yourself anything. Wrap your mind.")
 
     if google_configured():
-        if st.button("🔵  Continue with Google", use_container_width=True):
+        # Google refuses to load inside an iframe, and the Hugging Face Space
+        # page shows the app in one, so st.login() from there does nothing.
+        # The button opens the app's own URL in a new tab with ?login=google,
+        # and that tab starts the login.
+        if st.query_params.get("login") == "google":
+            st.query_params.clear()
             st.login("google")
+        app_url = st.secrets["auth"]["redirect_uri"].removesuffix("/oauth2callback")
+        st.link_button(
+            "🔵  Continue with Google",
+            f"{app_url}/?login=google",
+            use_container_width=True,
+        )
         st.divider()
 
     tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
