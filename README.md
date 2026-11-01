@@ -9,9 +9,9 @@ pinned: false
 short_description: Private journaling with an AI that learns your patterns
 ---
 
-# 💬 Yap
+# Yap
 
-**🚀 Live app: https://shireenaqeel-yap.hf.space**
+**Live app: https://shireenaqeel-yap.hf.space**
 
 A private journaling app where anyone can *yap* their thoughts and get a personal
 AI that learns their own patterns over time. Most journaling apps just store
@@ -22,19 +22,19 @@ Built for the **Girls Who Yap Fellowship 2.0** application.
 
 ## What it does
 
-- **🔐 Accounts** — sign up / log in. Your data lives in the cloud, so it
-  follows you across devices.
-- **📝 Yap** — write a journal entry (tagged with a category like 💡 Idea or
-  😤 Emotional rant), or upload a PDF. Everything runs through one pipeline:
+- **Accounts** — sign up / log in, or continue with Google. Your data lives in
+  the cloud, so it follows you across devices.
+- **Write** — write a journal entry (tagged with a category like Idea or
+  Vent), type or record it, or upload a PDF. Everything runs through one pipeline:
   `extract → chunk → embed → store`.
-- **🪞 Ask Yourself** — ask questions about yourself
+- **Ask** — ask questions about yourself
   (*"What do I usually do when I'm overwhelmed?"*). Yap retrieves your most
   relevant past entries and answers **in your own voice, grounded only in what
   you've written** — no fabrication.
-- **🎁 Personality Wrapped** — a Spotify-Wrapped-style AI recap of your week or
+- **Wrapped** — a Spotify-Wrapped-style AI recap of your week or
   month: top themes, mood arc, and a "personality this month" blurb that
   changes as you write more.
-- **📊 Patterns** — most-mentioned topics, category breakdown, and journaling
+- **Patterns** — most-mentioned topics, category breakdown, and journaling
   activity over the last *N* days.
 
 ## Tech stack
@@ -88,7 +88,7 @@ start yapping.
 ## Project layout
 
 ```
-app.py              Streamlit UI (auth + Yap / Ask Yourself / Wrapped / Patterns)
+app.py              Streamlit UI (auth + Write / Journal / Ask / Wrapped / Patterns)
 yap/
   config.py         env-driven settings + category list
   db.py             Postgres connection + schema (Supabase + pgvector)
@@ -101,17 +101,16 @@ yap/
   patterns.py       keyword / category / activity stats
 ```
 
-## Deploy (Streamlit Community Cloud)
+## Deploy (Hugging Face Spaces)
 
-Push to GitHub, then at [share.streamlit.io](https://share.streamlit.io) point a
-new app at this repo's `app.py`. Add `GROQ_API_KEY` and `SUPABASE_DB_URL` under
-the app's **Secrets**. That gives you a public, shareable, cross-device link.
+The live app is a Docker Space (`Dockerfile`, `start.sh`). Add `GROQ_API_KEY`
+and `SUPABASE_DB_URL` as Space secrets. For Google sign-in, also add
+`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` and `AUTH_COOKIE_SECRET`;
+`start.sh` writes them into `.streamlit/secrets.toml` at container start.
 
-## Roadmap (stretch)
+## Roadmap
 
-- 🎙️ Voice input (Whisper) for spoken yapping
-- 🗓️ Weekly auto-generated recap
-- 🏷️ Mood tagging per entry
+- Mood tagging per entry
 
 ---
 

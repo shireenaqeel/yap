@@ -4,4 +4,4 @@
 # keeping it light means new widgets never show up as a stray black box.
 [theme]
 base = "light"
-primaryColor = "#ff6f91"
+primaryColor = "#9a3b26"

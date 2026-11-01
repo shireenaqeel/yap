@@ -1,158 +1,101 @@
-"""Aesthetic theming engine.
+"""Visual themes.
 
 Each theme is a small set of design tokens; `build_css` turns those tokens into
 a block of CSS that restyles the whole Streamlit app (background, fonts, buttons,
-inputs, tabs, sidebar, cards) plus animations. `suggest_theme` reads the user's
-own yaps and asks Groq which aesthetic matches their personality.
-
-Adding a new aesthetic later is just one more entry in THEMES.
+inputs, tabs, sidebar, cards). `backdrop_html` adds the theme's background layer
+(paper grain or a slow aurora). `suggest_theme` reads the user's own entries and
+asks Groq which theme suits them.
 """
 
 from __future__ import annotations
 
-import random
-
 from . import config, patterns
 from .storage import UserStore
 
-# --- the aesthetics --------------------------------------------------------
-# Each value carries: a display label, a Google-Fonts import URL, body/heading
-# font stacks, background, translucent panel colour, text/accent colours, a
-# button gradient, corner radius, button-text colour, floating decoration
-# emoji, and whether the background gently animates.
+_INTER = "'Inter', system-ui, -apple-system, sans-serif"
+
+# Each value carries: a display label, a Google Fonts URL, body / heading /
+# writing font stacks, background, card and input colours, border, text colours, the
+# accent, the primary button fill and its text colour, corner radius, and the
+# background effect ("grain", "aurora" or None).
 THEMES: dict[str, dict] = {
-    "bestie": {
-        "label": "🌸 Bestie (GWY)",
-        "fonts": "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap",
-        "body_font": "'Poppins', sans-serif",
-        "head_font": "'Poppins', sans-serif",
-        "bg": "linear-gradient(165deg,#fff2f5 0%,#ffe6ee 55%,#ffeede 100%)",
-        "panel": "rgba(255,255,255,0.86)",
-        "text": "#3a2630",
-        "muted": "#8a6b75",
-        "primary": "#ff6f91",
-        "primary_grad": "linear-gradient(135deg,#ffa9c5,#ff6f91)",
-        "btn_text": "#ffffff",
-        "radius": "20px",
-        "decor": ["✿", "🌸", "💗", "🌷", "✨"],
-        "animated_bg": False,
-    },
-    "ghibli": {
-        "label": "🌿 Studio Ghibli",
-        "fonts": "https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;700&display=swap",
-        "body_font": "'Quicksand', sans-serif",
-        "head_font": "'Quicksand', sans-serif",
-        "bg": "linear-gradient(165deg,#cfeafe 0%,#e9f6e4 60%,#fdf6e3 100%)",
-        "panel": "rgba(255,255,255,0.78)",
-        "text": "#33474a",
-        "muted": "#5b716b",
-        "primary": "#5a9e6f",
-        "primary_grad": "linear-gradient(135deg,#86cf97,#5a9e6f)",
-        "btn_text": "#ffffff",
-        "radius": "18px",
-        "decor": ["☁️", "🍃", "🌿", "✨", "🌱"],
-        "animated_bg": False,
-    },
-    "dark_academia": {
-        "label": "📜 Dark Academia",
-        "fonts": "https://fonts.googleapis.com/css2?family=EB+Garamond:ital@0;1&family=Playfair+Display:wght@600;700&display=swap",
-        "body_font": "'EB Garamond', serif",
-        "head_font": "'Playfair Display', serif",
-        "bg": "linear-gradient(165deg,#241c14 0%,#3a2c1d 100%)",
-        "panel": "rgba(60,46,32,0.55)",
-        "text": "#ecdfca",
-        "muted": "#b9a888",
-        "primary": "#c8a25c",
-        "primary_grad": "linear-gradient(135deg,#d8b873,#9c7836)",
-        "btn_text": "#241c14",
-        "radius": "7px",
-        "decor": ["📜", "🕯️", "📚", "🖋️", "🦉", "☕"],
-        "animated_bg": False,
-    },
-    "cottagecore": {
-        "label": "🌻 Cottagecore",
-        "fonts": "https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Nunito:wght@400;600;700&display=swap",
-        "body_font": "'Nunito', sans-serif",
-        "head_font": "'Caveat', cursive",
-        "bg": "linear-gradient(165deg,#fbf3e0 0%,#eef1d8 60%,#e3ecd2 100%)",
-        "panel": "rgba(255,250,238,0.82)",
-        "text": "#5b4a36",
-        "muted": "#7d6a4f",
-        "primary": "#8a9a5b",
-        "primary_grad": "linear-gradient(135deg,#a8b56e,#7c8a4a)",
-        "btn_text": "#ffffff",
-        "radius": "20px",
-        "decor": ["🌻", "🍄", "🌿", "🐝", "🧺"],
-        "animated_bg": False,
-    },
-    "y2k": {
-        "label": "💿 Y2K",
-        "fonts": "https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600&display=swap",
-        "body_font": "'Rajdhani', sans-serif",
-        "head_font": "'Orbitron', sans-serif",
-        "bg": "linear-gradient(120deg,#ff5fd2,#5ce1e6,#c46bff,#ffd93b)",
-        "panel": "rgba(255,255,255,0.22)",
-        "text": "#1a1030",
-        "muted": "#4a3a6a",
-        "primary": "#ff2fb3",
-        "primary_grad": "linear-gradient(135deg,#ff5fd2,#7b2ff7)",
-        "btn_text": "#ffffff",
-        "radius": "14px",
-        "decor": ["💿", "✨", "🦋", "💖", "🌐"],
-        "animated_bg": True,
-    },
-    "goth": {
-        "label": "🦇 Goth",
-        "fonts": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap",
-        "body_font": "'Cormorant Garamond', serif",
-        "head_font": "'Cormorant Garamond', serif",
-        "bg": "linear-gradient(165deg,#0d0b10 0%,#1c0f1f 100%)",
-        "panel": "rgba(30,20,34,0.6)",
-        "text": "#d8cfe0",
-        "muted": "#9a8aa6",
-        "primary": "#9b3b6a",
-        "primary_grad": "linear-gradient(135deg,#7d1128,#3a0a3e)",
-        "btn_text": "#f0e6f0",
+    "paper": {
+        "label": "Paper",
+        "fonts": "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz@0,6..72;1,6..72&display=swap",
+        "body_font": _INTER,
+        "head_font": "'Fraunces', Georgia, serif",
+        "write_font": "'Newsreader', Georgia, serif",
+        "bg": "#f4efe6",
+        "panel": "#fbf8f2",
+        "field": "#fbf8f2",
+        "border": "#e2d9c8",
+        "text": "#1f1b16",
+        "muted": "#7a6f62",
+        "primary": "#9a3b26",
+        "button": "#1f1b16",
+        "btn_text": "#fbf8f2",
         "radius": "6px",
-        "decor": ["🦇", "🥀", "🕷️", "🌙", "🖤"],
-        "animated_bg": False,
+        "effect": "grain",
     },
-    "fairycore": {
-        "label": "🧚 Fairycore",
-        "fonts": "https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Quicksand:wght@400;600&display=swap",
-        "body_font": "'Quicksand', sans-serif",
-        "head_font": "'Dancing Script', cursive",
-        "bg": "linear-gradient(135deg,#f6e6ff,#e6f0ff,#ffe6f4,#eafff4)",
-        "panel": "rgba(255,255,255,0.62)",
-        "text": "#4a3a5a",
-        "muted": "#7a6a8a",
-        "primary": "#b57edc",
-        "primary_grad": "linear-gradient(135deg,#c8a2ff,#ff9ed6)",
+    "aurora": {
+        "label": "Aurora",
+        "fonts": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+        "body_font": _INTER,
+        "head_font": _INTER,
+        "write_font": _INTER,
+        "bg": "#0a0e1a",
+        "panel": "rgba(255,255,255,0.05)",
+        "field": "#121829",
+        "border": "rgba(255,255,255,0.10)",
+        "text": "#e7eaf3",
+        "muted": "#8f97ab",
+        "primary": "#8ea2ff",
+        "button": "linear-gradient(135deg,#8ea2ff,#5fd4c4)",
+        "btn_text": "#0a0e1a",
+        "radius": "12px",
+        "effect": "aurora",
+    },
+    "minimal": {
+        "label": "Minimal",
+        "fonts": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+        "body_font": _INTER,
+        "head_font": _INTER,
+        "write_font": _INTER,
+        "bg": "#ffffff",
+        "panel": "#ffffff",
+        "field": "#ffffff",
+        "border": "#e6e6e6",
+        "text": "#141414",
+        "muted": "#6b6b6b",
+        "primary": "#2f5bea",
+        "button": "#141414",
         "btn_text": "#ffffff",
-        "radius": "22px",
-        "decor": ["🧚", "✨", "🌸", "🍄", "🦋"],
-        "animated_bg": True,
+        "radius": "8px",
+        "effect": None,
     },
 }
 
-DEFAULT_THEME = "bestie"
+DEFAULT_THEME = "paper"
+
+# Fine paper texture: SVG fractal noise, tiled and blended over the background.
+_GRAIN = (
+    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' "
+    "width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' "
+    "baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter>"
+    "<rect width='100%' height='100%' filter='url(%23n)' opacity='.55'/></svg>\")"
+)
 
 
 # --- CSS generation --------------------------------------------------------
 def build_css(t: dict) -> str:
     """Return a <style> block that restyles the whole app for theme `t`."""
-    bg_anim = (
-        "background-size:300% 300%;animation:gradientshift 22s ease infinite;"
-        if t.get("animated_bg")
-        else ""
-    )
+    head_weight = 600 if "Fraunces" in t["head_font"] else 700
     return f"""
 <style>
 @import url('{t["fonts"]}');
 
 [data-testid="stAppViewContainer"], [data-testid="stApp"] {{
   background: {t["bg"]};
-  {bg_anim}
 }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
@@ -161,13 +104,19 @@ def build_css(t: dict) -> str:
   color: {t["text"]};
   position: relative;
   z-index: 1;
-  animation: fadein .6s ease both;
-  max-width: 820px;
-  padding-top: 2.2rem;
+  max-width: 760px;
+  padding-top: 3rem;
   line-height: 1.6;
 }}
-/* generous, doradao-style breathing room between widgets */
-.block-container [data-testid="stVerticalBlock"] {{ gap: 1.05rem; }}
+/* children rise in one after another on first paint */
+.block-container > div > [data-testid="stVerticalBlock"] > div {{
+  animation: rise .7s cubic-bezier(.2,.7,.2,1) both;
+}}
+.block-container > div > [data-testid="stVerticalBlock"] > div:nth-child(2) {{ animation-delay: .06s; }}
+.block-container > div > [data-testid="stVerticalBlock"] > div:nth-child(3) {{ animation-delay: .12s; }}
+.block-container > div > [data-testid="stVerticalBlock"] > div:nth-child(n+4) {{ animation-delay: .18s; }}
+
+.block-container [data-testid="stVerticalBlock"] {{ gap: 1rem; }}
 .block-container p, .block-container li, .block-container label,
 [data-testid="stMarkdownContainer"], .stCaption, small {{
   font-family: {t["body_font"]};
@@ -175,79 +124,122 @@ def build_css(t: dict) -> str:
 }}
 h1, h2, h3, h4 {{
   font-family: {t["head_font"]} !important;
+  font-weight: {head_weight} !important;
   color: {t["text"]} !important;
-  letter-spacing: .3px;
+  letter-spacing: -.01em;
 }}
 
 [data-testid="stSidebar"] {{
   background: {t["panel"]};
-  backdrop-filter: blur(10px);
+  border-right: 1px solid {t["border"]};
+  backdrop-filter: blur(14px);
 }}
 [data-testid="stSidebar"] * {{ color: {t["text"]}; }}
 
-.stButton > button, [data-testid="stDownloadButton"] button {{
-  background: {t["primary_grad"]};
-  color: {t["btn_text"]} !important;
-  border: none;
+/* buttons: primary is filled, everything else is a quiet outline */
+.stButton > button, [data-testid="stDownloadButton"] button,
+[data-testid="stLinkButton"] a {{
+  background: transparent;
+  color: {t["text"]} !important;
+  border: 1px solid {t["border"]};
   border-radius: {t["radius"]};
   font-family: {t["body_font"]};
-  font-weight: 600;
-  padding: .55rem 1.15rem;
-  transition: transform .15s ease, box-shadow .15s ease;
-  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  font-weight: 500;
+  padding: .5rem 1.1rem;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
 }}
-.stButton > button:hover, [data-testid="stDownloadButton"] button:hover {{
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 9px 24px rgba(0,0,0,.26);
+.stButton > button:hover, [data-testid="stDownloadButton"] button:hover,
+[data-testid="stLinkButton"] a:hover {{
+  border-color: {t["text"]};
+  transform: translateY(-1px);
 }}
+.stButton > button[kind="primary"], [data-testid="stBaseButton-primary"],
+[data-testid="stDownloadButton"] button {{
+  background: {t["button"]} !important;
+  color: {t["btn_text"]} !important;
+  border: none !important;
+}}
+.stButton > button[kind="primary"] p, [data-testid="stBaseButton-primary"] p,
+[data-testid="stDownloadButton"] button p {{ color: {t["btn_text"]} !important; }}
 
-.stTextInput input, .stTextArea textarea,
 [data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="base-input"],
-[data-baseweb="select"] > div {{
-  background: {t["panel"]} !important;
+[data-baseweb="select"] > div, [data-testid$="RootElement"],
+.react-aria-ComboBox [role="group"] {{
+  background: {t["field"]} !important;
   border-radius: {t["radius"]} !important;
+  border-color: {t["border"]} !important;
+}}
+/* the inner elements keep the base theme's fill unless cleared */
+.stTextInput input, .stTextArea textarea, [data-baseweb="select"] > div *,
+.react-aria-ComboBox input, .react-aria-ComboBox button {{
+  background: transparent !important;
   color: {t["text"]} !important;
   font-family: {t["body_font"]} !important;
-  border: 1px solid rgba(125,125,125,.25) !important;
+}}
+/* the journal box itself is set in the writing face, a little larger */
+.stTextArea textarea {{
+  font-family: {t["write_font"]} !important;
+  font-size: 1.08rem !important;
+  line-height: 1.7 !important;
 }}
 
-[data-baseweb="tab-list"] {{ gap: 4px; }}
-[data-baseweb="tab"] {{ font-family: {t["body_font"]}; color: {t["muted"]}; }}
-[data-baseweb="tab"][aria-selected="true"] {{ color: {t["primary"]}; }}
-[data-baseweb="tab-highlight"] {{ background: {t["primary"]} !important; }}
+/* tabs: older Streamlit uses baseweb, newer uses react-aria (stTab) */
+[data-baseweb="tab-list"], [role="tablist"] {{ gap: 1.4rem; border-bottom: 1px solid {t["border"]}; }}
+[data-baseweb="tab"], [data-testid="stTab"] {{
+  background: transparent !important; padding-left: 0; padding-right: 0;
+}}
+[data-baseweb="tab"], [data-baseweb="tab"] p,
+[data-testid="stTab"], [data-testid="stTab"] p {{
+  font-family: {t["body_font"]}; color: {t["muted"]} !important;
+}}
+[role="tab"][aria-selected="true"], [role="tab"][aria-selected="true"] p {{
+  color: {t["text"]} !important;
+}}
+[data-baseweb="tab-highlight"], .react-aria-SelectionIndicator {{
+  background: {t["primary"]} !important; height: 2px;
+}}
+[data-baseweb="tab-border"] {{ display: none; }}
 
 [data-testid="stMetric"] {{
   background: {t["panel"]};
+  border: 1px solid {t["border"]};
   border-radius: {t["radius"]};
   padding: 14px 16px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.10);
 }}
-[data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{ color: {t["text"]}; }}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
+  color: {t["text"]}; font-family: {t["head_font"]} !important;
+}}
+[data-testid="stMetricLabel"] {{ color: {t["muted"]}; }}
 
-/* expander: the wrapper, the <details>, AND the <summary> header all need the
-   panel colour, otherwise the header keeps the dark base-theme background */
+/* expander: the wrapper, the <details> and the <summary> all need the panel
+   colour, otherwise the header keeps the base-theme background */
 [data-testid="stExpander"], [data-testid="stExpander"] details,
 [data-testid="stExpander"] summary, [data-testid="stAlert"] {{
   border-radius: {t["radius"]} !important;
   background: {t["panel"]} !important;
 }}
+[data-testid="stExpander"] details {{ border-color: {t["border"]} !important; }}
 [data-testid="stExpander"] summary, [data-testid="stExpander"] summary p {{
   color: {t["text"]} !important;
 }}
 [data-testid="stExpander"] summary svg {{ fill: {t["text"]} !important; }}
 
-/* file uploader dropzone + its Browse button were dark by default */
+[data-testid="stVerticalBlockBorderWrapper"] {{
+  border-color: {t["border"]} !important;
+  background: {t["panel"]};
+  border-radius: {t["radius"]} !important;
+}}
+
 [data-testid="stFileUploaderDropzone"], [data-testid="stFileUploader"] section {{
   background: {t["panel"]} !important;
   border-radius: {t["radius"]} !important;
 }}
 [data-testid="stFileUploaderDropzone"] button,
 [data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {{
-  background: {t["primary_grad"]} !important;
-  color: {t["btn_text"]} !important;
-  border: none !important;
+  background: transparent !important;
+  color: {t["text"]} !important;
+  border: 1px solid {t["border"]} !important;
 }}
-/* the chip shown after a file is selected (was a dark pill) */
 [data-testid="stFileChips"], [data-testid="stFileChip"] {{
   background: {t["panel"]} !important;
   border-radius: {t["radius"]} !important;
@@ -257,95 +249,121 @@ h1, h2, h3, h4 {{
 }}
 [data-testid="stFileChip"] svg {{ fill: {t["text"]} !important; }}
 
-/* voice recorder widget */
 [data-testid="stAudioInput"], [data-testid="stExpanderDetails"] {{
   background: {t["panel"]} !important;
   border-radius: {t["radius"]} !important;
 }}
 
-/* --- robust text contrast --------------------------------------------------
-   Streamlit's base theme (light or dark) otherwise leaves widget labels in a
-   default colour that can vanish on a light theme. Force the theme's own text
-   colour onto every text-bearing widget, and theme the dropdown popovers that
-   render in a portal outside the styled container. */
+/* --- text contrast ---------------------------------------------------------
+   Streamlit's base theme leaves some widget labels in a default colour that
+   can vanish on a dark theme. Force the theme's text colour onto every
+   text-bearing widget, and theme the dropdowns that render in a portal. */
 [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *,
-[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
 .stRadio label, .stRadio div, .stCheckbox label, .stSlider label,
 [data-testid="stExpander"] summary, details summary, details summary *,
 [data-testid="stFileUploaderDropzone"] *,
 [data-baseweb="select"] div, [data-baseweb="select"] span {{
   color: {t["text"]} !important;
 }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * {{
+  color: {t["muted"]} !important;
+}}
 input::placeholder, textarea::placeholder {{
-  color: {t["muted"]} !important; opacity: .85;
+  color: {t["muted"]} !important; opacity: .8;
 }}
 
-/* dropdown / select menus render in a portal outside the themed container */
-ul[role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] li {{
-  background: {t["panel"]} !important;
+[role="listbox"], div:has(> [role="listbox"]),
+[data-baseweb="menu"], [data-baseweb="popover"] li {{
+  background: {t["field"]} !important;
 }}
-[role="option"], ul[role="listbox"] * {{ color: {t["text"]} !important; }}
+[role="option"][data-focused], [role="option"]:hover {{
+  background: rgba(125,125,125,.16) !important;
+}}
+[role="option"], [role="listbox"] * {{ color: {t["text"]} !important; }}
 
-/* category pills (Streamlit renders these as a button group) ----------------
-   Container is stButtonGroup; buttons are stBaseButton-pills /
-   stBaseButton-pillsActive (NOT stPills). Unselected get the light panel,
-   the selected one gets the accent. */
+/* category pills: container is stButtonGroup, buttons are
+   stBaseButton-pills / stBaseButton-pillsActive */
 [data-testid="stButtonGroup"] button,
 [data-testid^="stBaseButton-pills"] {{
-  background: {t["panel"]} !important;
-  border: 1px solid {t["muted"]} !important;
+  background: transparent !important;
+  border: 1px solid {t["border"]} !important;
 }}
 [data-testid="stButtonGroup"] button,
 [data-testid="stButtonGroup"] button p,
 [data-testid^="stBaseButton-pills"],
 [data-testid^="stBaseButton-pills"] p {{
-  color: {t["text"]} !important;
-}}
-[data-testid="stBaseButton-pillsActive"] {{
-  background: {t["primary"]} !important;
-  border-color: {t["primary"]} !important;
+  color: {t["muted"]} !important;
 }}
 [data-testid="stBaseButton-pillsActive"],
-[data-testid="stBaseButton-pillsActive"] p {{
-  color: {t["btn_text"]} !important;
+[data-testid="stButtonGroup"] button[aria-checked="true"] {{
+  background: {t["text"]} !important;
+  border-color: {t["text"]} !important;
+}}
+[data-testid="stBaseButton-pillsActive"],
+[data-testid="stBaseButton-pillsActive"] p,
+[data-testid="stButtonGroup"] button[aria-checked="true"],
+[data-testid="stButtonGroup"] button[aria-checked="true"] p {{
+  color: {t["bg"]} !important;
 }}
 
-.yap-hero {{
-  background: {t["primary_grad"]};
-  color: {t["btn_text"]};
-  border-radius: {t["radius"]};
-  padding: 22px 26px;
-  margin: 4px 0 22px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.20);
-  animation: fadein .6s ease both;
+/* page header: eyebrow, large greeting, quiet meta line */
+.yap-hero {{ margin: 0 0 1.6rem; }}
+.yap-eyebrow {{
+  font-family: {t["body_font"]};
+  font-size: .72rem; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: {t["primary"]};
 }}
-.yap-hero h1 {{ color: {t["btn_text"]} !important; margin: 0; font-size: 2.1rem; }}
-.yap-hero p {{ color: {t["btn_text"]}; opacity: .92; margin: .35rem 0 0; font-family: {t["body_font"]}; }}
+.yap-hero h1 {{
+  font-size: 2.6rem; line-height: 1.1; margin: .35rem 0 .4rem; padding: 0;
+}}
+.yap-hero p {{ color: {t["muted"]}; margin: 0; }}
 
 .yap-callout {{
-  background: {t["panel"]};
-  border-left: 4px solid {t["primary"]};
-  border-radius: {t["radius"]};
-  padding: 14px 18px;
-  margin: 4px 0 16px;
-  font-family: {t["body_font"]};
+  border-left: 2px solid {t["primary"]};
+  padding: 6px 0 6px 16px;
+  margin: 4px 0 12px;
+  font-family: {t["write_font"]};
+  font-size: 1.08rem;
+  font-style: italic;
   color: {t["text"]};
 }}
-.yap-callout b {{ color: {t["primary"]}; }}
 
 .yap-section {{
   font-family: {t["head_font"]};
+  font-weight: {head_weight};
   color: {t["text"]};
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   margin: 6px 0 2px;
 }}
 
-@keyframes fadein {{ from {{ opacity:0; transform:translateY(10px); }} to {{ opacity:1; transform:none; }} }}
-@keyframes gradientshift {{ 0%{{background-position:0% 50%}} 50%{{background-position:100% 50%}} 100%{{background-position:0% 50%}} }}
-@keyframes floaty {{ 0%{{transform:translateY(0)}} 50%{{transform:translateY(-24px)}} 100%{{transform:translateY(0)}} }}
+blockquote {{
+  border-left: 2px solid {t["primary"]} !important;
+  font-family: {t["write_font"]};
+  font-size: 1.1rem;
+}}
 
-.yap-decor {{ position:fixed; inset:0; pointer-events:none; z-index:-1; overflow:hidden; }}
-.yap-decor span {{ position:absolute; opacity:.38; animation: floaty 7s ease-in-out infinite; }}
+/* background layers */
+.yap-backdrop {{ position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }}
+.yap-grain {{ background-image: {_GRAIN}; mix-blend-mode: multiply; opacity: .35; }}
+.yap-blob {{
+  position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%;
+  filter: blur(90px); opacity: .32;
+  animation: drift 28s ease-in-out infinite alternate;
+}}
+.yap-blob.b1 {{ background: #5b6cff; top: -18%; left: -12%; }}
+.yap-blob.b2 {{ background: #2fc4b2; bottom: -22%; right: -14%; animation-duration: 34s; }}
+.yap-blob.b3 {{ background: #a35bff; top: 30%; left: 40%; opacity: .18; animation-duration: 40s; }}
+
+@keyframes rise {{ from {{ opacity: 0; transform: translateY(12px); }} to {{ opacity: 1; transform: none; }} }}
+@keyframes drift {{
+  0%   {{ transform: translate(0, 0) scale(1); }}
+  50%  {{ transform: translate(8vw, 6vh) scale(1.12); }}
+  100% {{ transform: translate(-6vw, 10vh) scale(.94); }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+  .block-container > div > [data-testid="stVerticalBlock"] > div, .yap-blob {{ animation: none; }}
+}}
 </style>
 """
 
@@ -355,12 +373,13 @@ def style_plotly(fig, t: dict):
     theme-coloured text and axes (otherwise charts keep a black background)."""
     grid = "rgba(125,125,125,0.18)"
     fig.update_layout(
-        paper_bgcolor=t["panel"],      # sit on a themed card, like the metrics
+        paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color=t["text"],
         font_family=t["body_font"].split(",")[0].strip("'\""),
         title_font_color=t["text"],
         legend_font_color=t["text"],
+        colorway=[t["primary"], t["muted"], "#c9a227", "#4f7c6a", "#6b5ca5", "#b0846a"],
         margin=dict(t=56, l=14, r=20, b=44),
     )
     # automargin so y-axis category labels are never clipped
@@ -369,30 +388,21 @@ def style_plotly(fig, t: dict):
     return fig
 
 
-def decor_html(t: dict, theme_key: str = "") -> str:
-    """A field of gently floating emoji, positioned deterministically per theme
-    so they stay put across reruns instead of jumping around."""
-    emojis = t.get("decor", [])
-    if not emojis:
-        return ""
-    rng = random.Random(theme_key or t.get("label", ""))
-    spans = []
-    for _ in range(12):
-        e = rng.choice(emojis)
-        left = rng.randint(2, 94)
-        top = rng.randint(4, 92)
-        delay = round(rng.uniform(0, 6), 1)
-        size = round(rng.uniform(1.3, 2.7), 1)
-        spans.append(
-            f'<span style="left:{left}%;top:{top}%;'
-            f'animation-delay:{delay}s;font-size:{size}rem">{e}</span>'
+def backdrop_html(t: dict) -> str:
+    """The fixed layer behind the content: paper grain or drifting aurora."""
+    if t.get("effect") == "grain":
+        return '<div class="yap-backdrop yap-grain"></div>'
+    if t.get("effect") == "aurora":
+        return (
+            '<div class="yap-backdrop"><div class="yap-blob b1"></div>'
+            '<div class="yap-blob b2"></div><div class="yap-blob b3"></div></div>'
         )
-    return '<div class="yap-decor">' + "".join(spans) + "</div>"
+    return ""
 
 
-# --- personality-matched theme suggestion ----------------------------------
+# --- theme suggestion ------------------------------------------------------
 def suggest_theme(store: UserStore, days: int = 120, n: int = 12) -> str:
-    """Ask Groq which aesthetic best matches the user's recent yaps. Falls back
+    """Ask Groq which theme best suits the user's recent entries. Falls back
     to the default theme when there's nothing written or no API key."""
     chunks = [
         c for c in patterns.recent_chunks(store, days)
@@ -402,11 +412,11 @@ def suggest_theme(store: UserStore, days: int = 120, n: int = 12) -> str:
         return DEFAULT_THEME
 
     blob = "\n".join(f"- {c['text']}" for c in chunks[-n:])
-    keys = ", ".join(THEMES.keys())
     sys = (
-        "You match a person to a visual aesthetic based on how they write and "
-        f"what they care about. Choose EXACTLY ONE key from this list: {keys}. "
-        "Reply with only the key, nothing else."
+        "You match a person to a visual theme based on how they write. "
+        "paper = warm, reflective, literary. aurora = dark, dreamy, night-owl. "
+        "minimal = direct, practical, to the point. "
+        "Reply with exactly one key: paper, aurora or minimal."
     )
 
     from groq import Groq

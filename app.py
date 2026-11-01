@@ -40,7 +40,7 @@ from yap import (  # noqa: E402
 )
 from yap.storage import UserStore  # noqa: E402
 
-st.set_page_config(page_title="Yap", page_icon="💬", layout="centered")
+st.set_page_config(page_title="Yap", page_icon=":material/edit_note:", layout="centered")
 
 
 @st.cache_resource
@@ -56,7 +56,7 @@ _bootstrap()
 _theme_key = st.session_state.setdefault("theme", themes.DEFAULT_THEME)
 _theme = themes.THEMES.get(_theme_key, themes.THEMES[themes.DEFAULT_THEME])
 st.markdown(themes.build_css(_theme), unsafe_allow_html=True)
-st.markdown(themes.decor_html(_theme, _theme_key), unsafe_allow_html=True)
+st.markdown(themes.backdrop_html(_theme), unsafe_allow_html=True)
 
 
 # ---- auth screen ----------------------------------------------------------
@@ -80,8 +80,12 @@ if (
 
 
 def auth_screen():
-    st.title("💬 Yap")
-    st.caption("Yap your thoughts. Ask yourself anything. Wrap your mind.")
+    st.markdown(
+        '<div class="yap-hero"><div class="yap-eyebrow">Yap</div>'
+        "<h1>A journal that remembers.</h1>"
+        "<p>Write freely, then ask your own past entries anything.</p></div>",
+        unsafe_allow_html=True,
+    )
 
     if google_configured():
         # Google refuses to load inside an iframe, and the Hugging Face Space
@@ -93,7 +97,7 @@ def auth_screen():
             st.login("google")
         app_url = st.secrets["auth"]["redirect_uri"].removesuffix("/oauth2callback")
         st.link_button(
-            "🔵  Continue with Google",
+            "Continue with Google",
             f"{app_url}/?login=google",
             use_container_width=True,
         )
@@ -119,7 +123,7 @@ def auth_screen():
             try:
                 uid = auth.sign_up(u2, p2)
                 st.session_state.update(user_id=uid, username=u2.strip().lower())
-                st.success("Account created!")
+                st.success("Account created.")
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -145,7 +149,7 @@ if "profile" not in st.session_state:
 
 # ---- sidebar --------------------------------------------------------------
 with st.sidebar:
-    st.title("💬 Yap")
+    st.markdown("### Yap")
     st.caption(f"Signed in as **{st.session_state['username']}**")
     if st.button("Log out", use_container_width=True):
         st.session_state.clear()
@@ -157,7 +161,7 @@ with st.sidebar:
     st.divider()
     _keys = list(themes.THEMES)
     _picked = st.selectbox(
-        "🎨 Aesthetic",
+        "Theme",
         _keys,
         index=_keys.index(st.session_state["theme"]),
         format_func=lambda k: themes.THEMES[k]["label"],
@@ -166,17 +170,17 @@ with st.sidebar:
         st.session_state["theme"] = _picked
         auth.set_theme(st.session_state["user_id"], _picked)
         st.rerun()
-    if st.button("✨ Match my vibe", use_container_width=True):
-        with st.spinner("Reading your aesthetic…"):
+    if st.button("Suggest a theme for me", use_container_width=True):
+        with st.spinner("Reading your recent entries…"):
             st.session_state["theme"] = themes.suggest_theme(store)
         auth.set_theme(st.session_state["user_id"], st.session_state["theme"])
         st.rerun()
 
-    with st.expander("⚙️ Account & data"):
+    with st.expander("Account and data"):
         st.caption(f"{store.size} chunks stored.")
 
         if st.checkbox("I want to clear ALL my entries", key="confirm_clear"):
-            if st.button("🧹 Clear everything", key="clear_all", use_container_width=True):
+            if st.button("Clear everything", key="clear_all", use_container_width=True):
                 with st.spinner("Clearing…"):
                     n = store.clear()
                 st.success(f"Cleared {n} chunk(s).")
@@ -185,7 +189,7 @@ with st.sidebar:
         st.divider()
         if st.checkbox("Permanently delete my account", key="confirm_delete"):
             st.warning("This erases your account and every entry. Cannot be undone.")
-            if st.button("❌ Delete my account", key="delete_acct", use_container_width=True):
+            if st.button("Delete my account", key="delete_acct", use_container_width=True):
                 _was_google = google_configured() and st.user.is_logged_in
                 auth.delete_account(st.session_state["user_id"])
                 st.session_state.clear()
@@ -195,20 +199,20 @@ with st.sidebar:
                     st.rerun()
 
     if not config.GROQ_API_KEY:
-        st.warning("No GROQ_API_KEY set — AI answers/Wrapped disabled.")
+        st.warning("No GROQ_API_KEY set, so answers and Wrapped are off.")
 
 
 # ---- hero banner (themed) -------------------------------------------------
 _name = st.session_state["username"].split("@")[0]
 st.markdown(
-    f'<div class="yap-hero"><h1>💬 Hey {_name}</h1>'
-    f"<p>Yap your thoughts · ask yourself anything · wrap your mind"
-    f" — {store.size} chunks remembered</p></div>",
+    f'<div class="yap-hero"><div class="yap-eyebrow">Yap</div>'
+    f"<h1>Welcome back, {_name}.</h1>"
+    f"<p>{store.size} passages remembered.</p></div>",
     unsafe_allow_html=True,
 )
 
 tab_yap, tab_journal, tab_ask, tab_wrapped, tab_patterns = st.tabs(
-    ["📝 Yap", "🗂️ Journal", "🧠 Ask Yourself", "🎁 Wrapped", "📊 Patterns"]
+    ["Write", "Journal", "Ask", "Wrapped", "Patterns"]
 )
 
 # ---- Yap tab --------------------------------------------------------------
@@ -218,29 +222,29 @@ with tab_yap:
         st.session_state["entry_box"] = ""
     _saved = st.session_state.pop("last_saved", None)
     if _saved:
-        st.success(f"Saved as {_saved[0]} — {_saved[1]} chunk(s) added.")
+        st.success(f"Saved under {_saved[0]}.")
 
     head_l, head_r = st.columns([3, 1])
-    head_l.markdown('<div class="yap-section">📝 Compose</div>', unsafe_allow_html=True)
-    if head_r.button("💭 Prompt me", use_container_width=True):
+    head_l.markdown('<div class="yap-section">New entry</div>', unsafe_allow_html=True)
+    if head_r.button("Give me a prompt", use_container_width=True):
         with st.spinner("Thinking about what you've written…"):
             st.session_state["reflect"] = prompts.reflection_prompt(store)
     if "reflect" in st.session_state:
         st.markdown(
-            f'<div class="yap-callout"><b>Reflect:</b> '
+            f'<div class="yap-callout">'
             f"{st.session_state['reflect']}</div>",
             unsafe_allow_html=True,
         )
 
     category = st.pills(
-        "Tag this yap",
+        "Category",
         config.CATEGORIES,
         default=config.CATEGORIES[2],
         key="yap_cat",
     ) or config.CATEGORIES[2]
 
     # Voice is just another way to fill the SAME entry box — not a separate flow.
-    with st.expander("🎙️ Prefer to talk? Record and it drops into your entry below"):
+    with st.expander("Record instead of typing"):
         v_audio = st.audio_input("Record", key="yap_audio", label_visibility="collapsed")
         if v_audio is not None and st.button("Transcribe into entry", key="yap_tx"):
             if not config.GROQ_API_KEY:
@@ -254,11 +258,11 @@ with tab_yap:
 
     entry = st.text_area(
         "What's on your mind?", height=180, key="entry_box",
-        placeholder="Type here, or use the mic above…",
+        placeholder="Start writing…",
     )
     if st.button("Save entry", type="primary"):
         if entry.strip():
-            with st.spinner("Embedding & storing…"):
+            with st.spinner("Saving…"):
                 added = ingest.ingest_text(store, entry, category=category)
             st.session_state["last_saved"] = (category, added)
             st.session_state["clear_entry"] = True
@@ -266,13 +270,13 @@ with tab_yap:
         else:
             st.warning("Write something first.")
 
-    with st.expander("🔗 Bring in your world — GitHub, links, bio & docs"):
+    with st.expander("Import GitHub, links, bio and documents"):
         st.caption(
-            "Import your projects and links so you can ask yourself about them "
-            "later — *“what have I built with Python?”*"
+            "Import your projects and links so you can ask about them "
+            "later, for example: *What have I built with Python?*"
         )
 
-        st.markdown("**🐙 GitHub projects**")
+        st.markdown("**GitHub projects**")
         gh = st.text_input(
             "GitHub username", key="gh_user", placeholder="e.g. shireenaqeel",
         )
@@ -281,13 +285,13 @@ with tab_yap:
                 try:
                     with st.spinner(f"Reading {gh.strip()}'s repos…"):
                         n_repos, n_chunks = connectors.import_github(store, gh)
-                    st.success(f"Imported {n_repos} projects — {n_chunks} chunk(s).")
+                    st.success(f"Imported {n_repos} projects.")
                 except ValueError as e:
                     st.error(str(e))
             else:
                 st.warning("Enter your GitHub username first.")
 
-        st.markdown("**🌐 Your socials & bio**")
+        st.markdown("**Links and bio**")
         _prof = st.session_state.get("profile", {})
         # Pre-fill each box from the saved profile (set defaults before widgets).
         for _wkey, _pkey in [
@@ -298,11 +302,11 @@ with tab_yap:
             st.session_state.setdefault(_wkey, _prof.get(_pkey, ""))
 
         fc1, fc2 = st.columns(2)
-        fc1.text_input("💼 LinkedIn", key="pf_linkedin", placeholder="linkedin.com/in/…")
-        fc2.text_input("🐦 X / Twitter", key="pf_twitter", placeholder="x.com/…")
-        fc1.text_input("📸 Instagram", key="pf_instagram", placeholder="instagram.com/…")
-        fc2.text_input("🌍 Website / Portfolio", key="pf_website", placeholder="yoursite.com")
-        st.text_area("📝 Short bio", key="pf_bio", placeholder="A line or two about you.", height=90)
+        fc1.text_input("LinkedIn", key="pf_linkedin", placeholder="linkedin.com/in/…")
+        fc2.text_input("X / Twitter", key="pf_twitter", placeholder="x.com/…")
+        fc1.text_input("Instagram", key="pf_instagram", placeholder="instagram.com/…")
+        fc2.text_input("Website", key="pf_website", placeholder="yoursite.com")
+        st.text_area("Short bio", key="pf_bio", placeholder="A line or two about you.", height=90)
 
         if st.button("Save profile", key="pf_save"):
             profile = {
@@ -329,22 +333,22 @@ with tab_yap:
                 ingest.ingest_text(store, "\n".join(_lines), type_="profile")
             st.success("Profile saved.")
 
-        st.markdown("**📎 Document (PDF)**")
+        st.markdown("**Document (PDF)**")
         pdf = st.file_uploader(
             "Resume, a 'how I think' profile, notes…", type="pdf",
             label_visibility="collapsed",
         )
-        if pdf is not None and st.button("Ingest PDF"):
-            with st.spinner(f"Extracting & embedding {pdf.name}…"):
+        if pdf is not None and st.button("Add PDF"):
+            with st.spinner(f"Reading {pdf.name}…"):
                 added = ingest.ingest_pdf(store, pdf.getvalue(), pdf.name)
-            st.success(f"Ingested {pdf.name} — {added} chunk(s) added.")
+            st.success(f"Added {pdf.name}.")
 
 # ---- Journal tab ----------------------------------------------------------
 with tab_journal:
-    st.markdown('<div class="yap-section">🗂️ Your journal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="yap-section">Journal</div>', unsafe_allow_html=True)
     _entries = store.list_entries()
     if not _entries:
-        st.info("Nothing here yet — go yap something on the 📝 Yap tab!")
+        st.info("Nothing here yet. Your entries will appear here once you write one.")
     else:
         st.caption(f"{len(_entries)} most recent entries · newest first.")
         for e in _entries:
@@ -355,19 +359,19 @@ with tab_journal:
                 row_l.markdown(f"**{tag}**{src} · {e.get('date', '')[:10]}")
                 text = e["text"]
                 row_l.write(text if len(text) <= 400 else text[:400] + "…")
-                if row_r.button("🗑️", key=f"del_{e['id']}", help="Delete this entry"):
+                if row_r.button("Delete", key=f"del_{e['id']}", help="Delete this entry"):
                     store.delete(e["id"])
                     st.rerun()
 
 # ---- Ask Yourself tab -----------------------------------------------------
 with tab_ask:
-    st.markdown('<div class="yap-section">🧠 Ask yourself</div>', unsafe_allow_html=True)
+    st.markdown('<div class="yap-section">Ask your journal</div>', unsafe_allow_html=True)
     st.caption(
         "e.g. *What do I usually do when I'm overwhelmed?* · "
         "*What have I been excited about lately?*"
     )
 
-    with st.expander("🎙️ Prefer to ask out loud? Record and it fills the question"):
+    with st.expander("Ask out loud instead"):
         q_audio = st.audio_input("Record", key="ask_audio", label_visibility="collapsed")
         if q_audio is not None and st.button("Transcribe question", key="ask_tx"):
             if not config.GROQ_API_KEY:
@@ -382,20 +386,20 @@ with tab_ask:
     q_col, btn_col = st.columns([4, 1])
     question = q_col.text_input(
         "Your question", key="question_box", label_visibility="collapsed",
-        placeholder="Ask yourself anything…",
+        placeholder="What do I keep coming back to?",
     )
     if btn_col.button("Ask", type="primary", use_container_width=True):
         if not question.strip():
             st.warning("Type a question first.")
         else:
-            with st.spinner("Looking through your own words…"):
+            with st.spinner("Searching your entries…"):
                 st.session_state["last_answer"] = generation.answer(store, question)
             st.session_state.pop("answer_audio", None)  # drop stale read-back
 
     if "last_answer" in st.session_state:
         result = st.session_state["last_answer"]
         st.markdown(f"> {result['answer']}")
-        if st.button("🔊 Read it back to me"):
+        if st.button("Read aloud"):
             with st.spinner("Generating audio…"):
                 st.session_state["answer_audio"] = speech.speak(result["answer"])
         if "answer_audio" in st.session_state:
@@ -412,13 +416,13 @@ with tab_ask:
 # ---- Wrapped tab ----------------------------------------------------------
 with tab_wrapped:
     st.markdown(
-        '<div class="yap-section">🎁 Your Personality Wrapped</div>',
+        '<div class="yap-section">Wrapped</div>',
         unsafe_allow_html=True,
     )
-    span = st.radio("Wrap my…", ["This week", "This month"], horizontal=True)
+    span = st.radio("Period", ["This week", "This month"], horizontal=True)
     days = 7 if span == "This week" else 30
-    if st.button("Generate my Wrapped", type="primary"):
-        with st.spinner("Reading your mind…"):
+    if st.button("Generate", type="primary"):
+        with st.spinner("Writing your recap…"):
             w = wrapped.generate(store, days=days)
         st.session_state["last_wrapped"] = w
     if "last_wrapped" in st.session_state:
@@ -431,12 +435,12 @@ with tab_wrapped:
         st.markdown(w["recap"])
 
         st.divider()
-        st.markdown('<div class="yap-section">📸 Share it</div>', unsafe_allow_html=True)
+        st.markdown('<div class="yap-section">Share</div>', unsafe_allow_html=True)
         png = card.render_card(w, st.session_state["username"])
         mid = st.columns([1, 3, 1])[1]
         mid.image(png, use_container_width=True)
         mid.download_button(
-            "📥 Download card",
+            "Download card",
             png,
             file_name="yap-wrapped.png",
             mime="image/png",
@@ -445,18 +449,18 @@ with tab_wrapped:
 
 # ---- Patterns tab ---------------------------------------------------------
 with tab_patterns:
-    st.markdown('<div class="yap-section">📊 Your patterns</div>', unsafe_allow_html=True)
+    st.markdown('<div class="yap-section">Patterns</div>', unsafe_allow_html=True)
     days = st.slider("Look back over the last N days", 7, 365, 30, step=7)
     data = patterns.summary(store, days=days)
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Chunks", data["total_chunks"])
-    c2.metric("Yap entries", data["yap_chunks"])
-    c3.metric("Doc chunks", data["doc_chunks"])
+    c1.metric("Passages", data["total_chunks"])
+    c2.metric("From entries", data["yap_chunks"])
+    c3.metric("From documents", data["doc_chunks"])
 
     if data["categories"]:
         cats, ccounts = zip(*data["categories"])
-        fig = px.pie(names=list(cats), values=list(ccounts), title="Your categories")
+        fig = px.pie(names=list(cats), values=list(ccounts), title="Categories")
         st.plotly_chart(
             themes.style_plotly(fig, _theme), use_container_width=True, theme=None
         )
@@ -474,7 +478,7 @@ with tab_patterns:
             themes.style_plotly(fig, _theme), use_container_width=True, theme=None
         )
     elif not data["categories"]:
-        st.info("Not enough written yet to find patterns. Yap a few entries!")
+        st.info("Write a few more entries and patterns will show up here.")
 
     if data["activity"]:
         adates, acounts = zip(*data["activity"])

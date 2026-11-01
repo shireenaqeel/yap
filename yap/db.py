@@ -51,6 +51,16 @@ alter table users add column if not exists theme text;
 -- Per-user profile: bio + individual social links, stored as JSON.
 alter table users add column if not exists profile jsonb;
 
+-- Categories used to carry an emoji prefix ("💡 Idea"); keep the name only,
+-- and rename the old "Emotional rant" to "Vent". Safe to re-run.
+update entries set category = btrim(regexp_replace(category, '^[^A-Za-z]+', ''))
+    where category ~ '^[^A-Za-z]';
+update entries set category = 'Vent' where category = 'Emotional rant';
+
+-- The original seven themes were replaced by paper / aurora / minimal.
+update users set theme = null
+    where theme is not null and theme not in ('paper', 'aurora', 'minimal');
+
 -- Supabase exposes the public schema over its REST API. RLS with no policies
 -- blocks that path entirely; the app connects as the table owner, which
 -- bypasses RLS, so its own queries are unaffected. Safe to re-run.

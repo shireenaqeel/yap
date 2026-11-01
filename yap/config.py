@@ -26,11 +26,4 @@ CHUNK_OVERLAP = 100   # character overlap between consecutive chunks
 TOP_K = 5             # chunks retrieved per question
 
 # The fixed set of categories a user can tag a yap with.
-CATEGORIES = [
-    "💡 Idea",
-    "😤 Emotional rant",
-    "🎲 Random",
-    "🎯 Goal",
-    "🙏 Gratitude",
-    "🧠 Reflection",
-]
+CATEGORIES = ["Idea", "Vent", "Random", "Goal", "Gratitude", "Reflection"]

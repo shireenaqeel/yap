@@ -14,24 +14,24 @@ WRAPPED_PROMPT = """You are writing a fun, warm "Personality Wrapped" — like
 Spotify Wrapped, but for someone's journal. You are given their journal entries
 for a period. Produce a short, punchy recap with these sections, using markdown:
 
-### 🎬 Your {period} in a sentence
+### Your {period} in a sentence
 One vivid sentence capturing the overall vibe.
 
-### 🔥 Your top themes
+### Top themes
 3-5 bullets naming what they kept circling back to (be specific to the text).
 
-### 🌡️ Mood arc
+### Mood arc
 1-2 sentences on the emotional shape of the period.
 
-### 🧬 Your personality this {period}
+### Your personality this {period}
 A 2-3 sentence "personality type" blurb, fun but kind and grounded ONLY in what
 they actually wrote. Give it a catchy 2-4 word title in bold.
 
-### ✨ One thing to notice
+### One thing to notice
 A single gentle, useful observation about a pattern they might not see.
 
 Rules: warm, specific, second person ("you"). Use only what's in the entries —
-never invent events. Keep the whole thing tight."""
+never invent events. No emoji. Keep the whole thing tight."""
 
 
 def _entries_blob(chunks: list[dict], limit: int = 60) -> str:
@@ -61,7 +61,7 @@ def generate(store: UserStore, days: int = 30) -> dict:
     if len(chunks) < 2:
         return {
             "recap": "You need at least a couple of yaps in this period before "
-            "I can wrap you up. Go yap a few things and come back!",
+            "I can write a recap. Add a few more and come back.",
             "stats": stats,
         }
     if not config.GROQ_API_KEY:
